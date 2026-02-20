@@ -117,9 +117,8 @@ function rewardForSuccess(base: number, attempts: number, alreadyCompleted: bool
 
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
 
-function getInitialScript(save: SaveData, levelId: string): string {
-  const level = levelById[levelId];
-  return save.lastScripts[levelId] ?? level?.suggestedScript ?? '';
+function getInitialScript(_levelId: string): string {
+  return '';
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -163,7 +162,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     const saveBefore = get().save;
-    const script = getInitialScript(saveBefore, levelId);
+    const script = getInitialScript(levelId);
     const observeCompiled = compileScript(script, level, saveBefore.upgrades);
     const commands = observeCompiled.errors.length ? [] : observeCompiled.commands;
 
@@ -232,8 +231,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.currentLevelId) {
       return;
     }
-    const level = levelById[state.currentLevelId];
-    const fallback = level?.suggestedScript ?? '';
+    const fallback = '';
 
     const nextSave = {
       ...state.save,

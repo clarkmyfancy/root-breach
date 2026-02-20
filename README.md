@@ -8,6 +8,28 @@ A deterministic, tick-based browser puzzle game prototype built with React + Typ
 2. `npm run dev`
 3. Open the local Vite URL in your browser.
 
+## Deploy To Heroku
+
+This app is a static React build, but Heroku still needs a web process to serve files.  
+This repo now includes:
+
+- `server.js`: small Node static server that serves `dist/` and falls back to `index.html` for SPA routes
+- `Procfile`: `web: npm start`
+- `npm start`: runs `node server.js`
+
+Setup checklist:
+
+1. In Heroku app settings, ensure the `heroku/nodejs` buildpack is enabled.
+2. Keep stack current (for example `heroku-24`).
+3. Confirm your app has at least one active **Web** dyno/process type.
+4. Push to `main` (auto deploy will build and release).
+
+Local production test:
+
+1. `npm run build`
+2. `npm start`
+3. Open `http://localhost:3000`
+
 ## Core MVP Features Included
 
 - 2D top-down playable map (canvas rendering)

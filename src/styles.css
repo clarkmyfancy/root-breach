@@ -205,6 +205,7 @@ textarea {
 .panel-map {
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .map-canvas {
@@ -232,18 +233,6 @@ textarea {
   flex-direction: column;
   gap: 0.5rem;
   height: 100%;
-  position: relative;
-}
-
-.terminal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: relative;
-}
-
-.terminal-header .panel__title {
-  margin-bottom: 0;
 }
 
 .help-button {
@@ -254,7 +243,14 @@ textarea {
   font-weight: 700;
 }
 
-.terminal-help-popover {
+.map-help {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 30;
+}
+
+.map-help-popover {
   position: absolute;
   top: 2.2rem;
   right: 0;
@@ -269,22 +265,22 @@ textarea {
   z-index: 25;
 }
 
-.terminal-help-title {
+.help-popover-title {
   font-weight: 700;
   color: #d8ecff;
   margin-bottom: 0.35rem;
 }
 
-.terminal-help-popover ul {
+.map-help-popover ul {
   margin: 0;
   padding-left: 1rem;
 }
 
-.terminal-help-popover li {
+.map-help-popover li {
   margin-bottom: 0.2rem;
 }
 
-.terminal-help-popover code {
+.map-help-popover code {
   color: #9cd6ff;
 }
 
@@ -436,9 +432,8 @@ textarea {
 }
 
 @media (min-width: 1360px) {
-  .terminal-help-popover {
-    top: -0.25rem;
-    left: calc(100% + 0.6rem);
-    right: auto;
+  .map-help-popover {
+    top: -0.1rem;
+    right: calc(100% + 0.55rem);
   }
 }

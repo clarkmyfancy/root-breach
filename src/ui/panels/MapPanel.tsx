@@ -1,8 +1,19 @@
-import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { LevelDefinition } from '../../game/models/types';
 import type { SimulationSnapshot } from '../../game/engine/eventTypes';
 
 const TILE = 42;
+const apiReference = [
+  'camera("CAM_ID").disable(20)',
+  'camera("CAM_ID").enable()',
+  'alarm().delay(30)',
+  'door("DOOR_ID").open()',
+  'door("DOOR_ID").close()',
+  'turret("TURRET_ID").retarget("TARGET_ID")',
+  'device("DEVICE_ID").tag("friendly")',
+  'wait(5)',
+  'log("message")',
+];
 
 interface MapPanelProps {
   level: LevelDefinition;
@@ -87,6 +98,8 @@ function drawDevice(
 
 export function MapPanel({ level, snapshot, tick, selectedDeviceId, onSelectDevice }: MapPanelProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const helpRef = useRef<HTMLDivElement | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const devices = useMemo(
     () => (snapshot ? Object.values(snapshot.devices) : []),
@@ -173,7 +186,33 @@ export function MapPanel({ level, snapshot, tick, selectedDeviceId, onSelectDevi
     ctx.fillText(`Tick ${tick}`, 8, 16);
   }, [level, snapshot, tick, devices, selectedDeviceId]);
 
-  const onClick = (event: MouseEvent<HTMLCanvasElement>) => {
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent): void {
+      if (!helpRef.current) {
+        return;
+      }
+      const target = event.target as Node | null;
+      if (target && !helpRef.current.contains(target)) {
+        setShowHelp(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        setShowHelp(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  const onClick = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (!snapshot) {
       return;
     }
@@ -196,6 +235,27 @@ export function MapPanel({ level, snapshot, tick, selectedDeviceId, onSelectDevi
   return (
     <div className="panel panel-map">
       <div className="panel__title">Map / Replay</div>
+      <div className="map-help" ref={helpRef}>
+        <button
+          className="btn help-button"
+          onClick={() => setShowHelp((value) => !value)}
+          aria-label="Show command help"
+        >
+          ?
+        </button>
+        {showHelp ? (
+          <div className="map-help-popover">
+            <div className="help-popover-title">Available Commands</div>
+            <ul>
+              {apiReference.map((item) => (
+                <li key={item}>
+                  <code>{item}</code>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
       <canvas ref={canvasRef} className="map-canvas" onClick={onClick} />
     </div>
   );

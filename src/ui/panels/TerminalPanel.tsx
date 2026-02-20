@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CompileError } from '../../game/compiler/scriptTypes';
 import type { EffectiveConstraints } from '../../game/models/types';
 
@@ -12,6 +13,19 @@ interface TerminalPanelProps {
   onResetScript: () => void;
 }
 
+const apiReference = [
+  'camera("CAM_ID").disable()',
+  'camera("CAM_ID").disable(20)',
+  'camera("CAM_ID").enable()',
+  'alarm().delay(30)',
+  'door("DOOR_ID").open()',
+  'door("DOOR_ID").close()',
+  'turret("TURRET_ID").retarget("TARGET_ID")',
+  'device("DEVICE_ID").tag("friendly")',
+  'wait(5)',
+  'log("message")',
+];
+
 export function TerminalPanel({
   source,
   errors,
@@ -22,12 +36,37 @@ export function TerminalPanel({
   onReplay,
   onResetScript,
 }: TerminalPanelProps): JSX.Element {
+  const [showHelp, setShowHelp] = useState(false);
   const activeSet = new Set(activeLines);
   const renderedLines = source.split(/\r?\n/);
 
   return (
     <div className="panel panel-terminal">
-      <div className="panel__title">Terminal</div>
+      <div className="terminal-header">
+        <div className="terminal-title-wrap">
+          <button
+            className="btn help-button"
+            onClick={() => setShowHelp((value) => !value)}
+            aria-label="Show command help"
+          >
+            ?
+          </button>
+          <div className="panel__title terminal-title">Terminal</div>
+        </div>
+      </div>
+
+      {showHelp ? (
+        <div className="terminal-help-inline">
+          <div className="help-popover-title">Available Commands</div>
+          <ul>
+            {apiReference.map((item) => (
+              <li key={item}>
+                <code>{item}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <textarea
         className="terminal-input"

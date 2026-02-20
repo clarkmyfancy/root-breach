@@ -11,6 +11,11 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'camera.disable', deviceId: m[1], value: Number(m[2]) }),
   },
   {
+    kind: 'camera.disable',
+    regex: /^camera\("([A-Za-z0-9_:-]+)"\)\.disable\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'camera.disable', deviceId: m[1] }),
+  },
+  {
     kind: 'camera.enable',
     regex: /^camera\("([A-Za-z0-9_:-]+)"\)\.enable\(\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'camera.enable', deviceId: m[1] }),

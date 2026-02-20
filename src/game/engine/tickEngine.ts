@@ -10,6 +10,7 @@ import type {
   SimulationState,
 } from '../models/types';
 import { buildFailureSummary } from './failureSummary';
+import { GLOBAL_TICK_LIMIT } from './constants';
 import type { EventCategory, EventRecord, EventType, SimulationResult } from './eventTypes';
 import { buildFrame } from './replayRecorder';
 
@@ -23,7 +24,9 @@ interface TargetInfo {
 interface TickContext {
   state: SimulationState;
   level: LevelDefinition;
+  tickLimit: number;
   commandsByTick: Map<number, CompiledCommand[]>;
+  cameraDetectionMemory: Record<string, boolean>;
   eventsThisTick: EventRecord[];
   events: EventRecord[];
   executedLines: number[];
@@ -114,12 +117,18 @@ function applyScheduledScriptActions(ctx: TickContext): void {
     switch (command.kind) {
       case 'camera.disable': {
         const camera = getDevice(ctx.state, command.deviceId, 'camera');
-        if (!camera || !command.value) {
+        if (!camera) {
           break;
         }
         camera.enabled = false;
-        camera.disabledUntilTick = ctx.state.tick + command.value;
-        emit(ctx, 'DEVICE_DISABLED', 'script', { deviceId: camera.id, duration: command.value }, command.line);
+        camera.disabledUntilTick = command.value !== undefined ? ctx.state.tick + command.value : null;
+        emit(
+          ctx,
+          'DEVICE_DISABLED',
+          'script',
+          { deviceId: camera.id, duration: command.value ?? null },
+          command.line,
+        );
         break;
       }
       case 'camera.enable': {
@@ -238,6 +247,11 @@ function updateDroneMovement(ctx: TickContext): void {
 
 function updateCameraDetection(ctx: TickContext): boolean {
   if (!ctx.state.player.alive) {
+    for (const device of Object.values(ctx.state.devices)) {
+      if (device.type === 'camera') {
+        ctx.cameraDetectionMemory[device.id] = false;
+      }
+    }
     return false;
   }
 
@@ -247,17 +261,24 @@ function updateCameraDetection(ctx: TickContext): boolean {
       continue;
     }
     const camera = device;
+    const wasDetecting = ctx.cameraDetectionMemory[camera.id] ?? false;
     if (!camera.enabled) {
+      ctx.cameraDetectionMemory[camera.id] = false;
       continue;
     }
 
     const inRange = distance(camera, ctx.state.player) <= camera.range;
-    if (!inRange || !facingMatches(camera, ctx.state.player)) {
+    const nowDetecting = inRange && facingMatches(camera, ctx.state.player);
+    if (!nowDetecting) {
+      ctx.cameraDetectionMemory[camera.id] = false;
       continue;
     }
 
     detected = true;
-    emit(ctx, 'CAMERA_DETECTED_PLAYER', 'detection', { cameraId: camera.id, player: 'agent' });
+    if (!wasDetecting) {
+      emit(ctx, 'CAMERA_DETECTED_PLAYER', 'detection', { cameraId: camera.id, player: 'agent' });
+    }
+    ctx.cameraDetectionMemory[camera.id] = true;
   }
 
   return detected;
@@ -443,7 +464,7 @@ function checkWinLose(ctx: TickContext): boolean {
     return true;
   }
 
-  if (ctx.state.tick >= ctx.level.constraints.tickLimit) {
+  if (ctx.state.tick >= ctx.tickLimit) {
     ctx.state.outcome = 'failure';
     return true;
   }
@@ -467,6 +488,7 @@ function buildCommandsByTick(commands: CompiledCommand[]): Map<number, CompiledC
 }
 
 export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[]): SimulationResult {
+  const tickLimit = Math.min(level.constraints.tickLimit, GLOBAL_TICK_LIMIT);
   const state = createInitialSimulationState(level);
   const commandsByTick = buildCommandsByTick(commands);
   const events: EventRecord[] = [];
@@ -475,7 +497,9 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
   const ctx: TickContext = {
     state,
     level,
+    tickLimit,
     commandsByTick,
+    cameraDetectionMemory: {},
     eventsThisTick: [],
     events,
     executedLines: [],
@@ -493,8 +517,8 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     updateAlarmBus(ctx, detected);
     updateTurrets(ctx);
     updatePlayerMovement(ctx);
-    if (ctx.state.tick >= ctx.level.constraints.tickLimit) {
-      emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.level.constraints.tickLimit });
+    if (ctx.state.tick >= ctx.tickLimit) {
+      emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.tickLimit });
     }
 
     const frame = buildFrame(ctx.state, ctx.eventsThisTick, ctx.executedLines);
@@ -517,6 +541,7 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     events,
     outcome,
     finalTick: ctx.state.tick,
+    tickLimit,
     failureSummary,
   };
 }

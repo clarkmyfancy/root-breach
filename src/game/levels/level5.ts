@@ -104,8 +104,7 @@ export const level5: LevelDefinition = {
     maxLines: 5,
     maxCommands: 5,
     maxDelayTicks: 8,
-    tickLimit: 160,
+    tickLimit: 120,
   },
-  rewardCredits: 180,
   suggestedScript: `camera("C5A").disable(8)\ndoor("D5A").open()\nwait(5)\ndoor("D5B").open()\ncamera("C5B").disable(8)`,
 };

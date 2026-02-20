@@ -4,7 +4,6 @@ import type { CompileError } from '../game/compiler/scriptTypes';
 import { runSimulation } from '../game/engine/simulationRunner';
 import type { FailureSummary, SimulationResult } from '../game/engine/eventTypes';
 import { levelById, levels } from '../game/levels';
-import type { UpgradeState } from '../game/models/types';
 import { defaultSaveData, loadSaveData, persistSaveData, type SaveData } from '../persistence/saveGame';
 
 export type ScreenPhase =
@@ -18,42 +17,6 @@ export type ScreenPhase =
 
 export type ReplaySpeed = 1 | 2 | 4;
 
-export type UpgradeKey = 'maxLines' | 'maxCommands' | 'maxDelay' | 'inspector';
-
-export interface UpgradeDef {
-  key: UpgradeKey;
-  name: string;
-  description: string;
-  cost: number;
-}
-
-export const upgradesCatalog: UpgradeDef[] = [
-  {
-    key: 'maxLines',
-    name: '+1 Max Script Line',
-    description: 'Increase line cap by 1 for all levels.',
-    cost: 120,
-  },
-  {
-    key: 'maxCommands',
-    name: '+1 Command Budget',
-    description: 'Increase command budget by 1 for all levels.',
-    cost: 120,
-  },
-  {
-    key: 'maxDelay',
-    name: '+10 Delay Cap',
-    description: 'Increase max delay/disable/wait cap by 10 ticks.',
-    cost: 140,
-  },
-  {
-    key: 'inspector',
-    name: 'Inspector+',
-    description: 'Show event categories in the log panel.',
-    cost: 180,
-  },
-];
-
 interface GameStore {
   phase: ScreenPhase;
   currentLevelId: string | null;
@@ -66,7 +29,6 @@ interface GameStore {
   selectedDeviceId: string | null;
   failureSummary: FailureSummary | null;
   save: SaveData;
-  lastReward: number;
   lastOutcome: 'success' | 'failure' | null;
 
   goToMainMenu: () => void;
@@ -82,7 +44,6 @@ interface GameStore {
   resetReplay: () => void;
   advanceReplay: () => void;
   selectDevice: (deviceId: string | null) => void;
-  purchaseUpgrade: (key: UpgradeKey) => void;
 }
 
 function countScriptCommands(source: string): number {
@@ -90,29 +51,6 @@ function countScriptCommands(source: string): number {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('//') && !line.startsWith('#')).length;
-}
-
-function applyUpgrade(upgrades: UpgradeState, key: UpgradeKey): UpgradeState {
-  switch (key) {
-    case 'maxLines':
-      return { ...upgrades, maxLinesBonus: upgrades.maxLinesBonus + 1 };
-    case 'maxCommands':
-      return { ...upgrades, maxCommandsBonus: upgrades.maxCommandsBonus + 1 };
-    case 'maxDelay':
-      return { ...upgrades, maxDelayBonus: upgrades.maxDelayBonus + 10 };
-    case 'inspector':
-      return { ...upgrades, inspectorPlus: true };
-    default:
-      return upgrades;
-  }
-}
-
-function rewardForSuccess(base: number, attempts: number, alreadyCompleted: boolean): number {
-  if (alreadyCompleted) {
-    return Math.floor(base * 0.4);
-  }
-  const bonus = Math.max(0, 40 - Math.max(0, attempts - 1) * 5);
-  return base + bonus;
 }
 
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
@@ -133,7 +71,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedDeviceId: null,
   failureSummary: null,
   save: initialSave,
-  lastReward: 0,
   lastOutcome: null,
 
   goToMainMenu: () => {
@@ -146,7 +83,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       currentLevelId: null,
       selectedDeviceId: null,
       compileErrors: [],
-      lastReward: 0,
       lastOutcome: null,
     });
   },
@@ -163,7 +99,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const saveBefore = get().save;
     const script = getInitialScript(levelId);
-    const observeCompiled = compileScript(script, level, saveBefore.upgrades);
+    const observeCompiled = compileScript(script, level);
     const commands = observeCompiled.errors.length ? [] : observeCompiled.commands;
 
     const attemptsByLevel = {
@@ -193,7 +129,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedDeviceId: null,
       failureSummary: result.failureSummary ?? null,
       save: saveAfter,
-      lastReward: 0,
       lastOutcome: null,
     });
   },
@@ -231,8 +166,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.currentLevelId) {
       return;
     }
-    const fallback = '';
 
+    const fallback = '';
     const nextSave = {
       ...state.save,
       lastScripts: {
@@ -259,7 +194,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return false;
     }
 
-    const compiled = compileScript(state.scriptText, level, state.save.upgrades);
+    const compiled = compileScript(state.scriptText, level);
     set({ compileErrors: compiled.errors });
     return compiled.errors.length === 0;
   },
@@ -275,7 +210,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const compiled = compileScript(state.scriptText, level, state.save.upgrades);
+    const compiled = compileScript(state.scriptText, level);
     if (compiled.errors.length) {
       set({
         compileErrors: compiled.errors,
@@ -311,7 +246,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       failureSummary: result.failureSummary ?? null,
       selectedDeviceId: null,
       save: nextSave,
-      lastReward: 0,
       lastOutcome: null,
     });
   },
@@ -370,10 +304,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const completedBefore = Boolean(state.save.completedLevels[state.currentLevelId]);
-    const attempts = state.save.attemptsByLevel[state.currentLevelId] ?? 1;
-    const reward = rewardForSuccess(level.rewardCredits, attempts, completedBefore);
-
     const levelIndex = levels.findIndex((entry) => entry.id === state.currentLevelId);
     const nextUnlockedIndex = Math.max(state.save.unlockedLevelIndex, Math.min(levels.length - 1, levelIndex + 1));
     const newBest = state.save.bestScripts[state.currentLevelId];
@@ -384,7 +314,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const nextSave: SaveData = {
       ...state.save,
       unlockedLevelIndex: nextUnlockedIndex,
-      credits: state.save.credits + reward,
       completedLevels: {
         ...state.save.completedLevels,
         [state.currentLevelId]: true,
@@ -405,34 +334,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       phase: 'levelComplete',
       failureSummary: null,
       save: nextSave,
-      lastReward: reward,
       lastOutcome: 'success',
     });
   },
 
   selectDevice: (deviceId) => {
     set({ selectedDeviceId: deviceId });
-  },
-
-  purchaseUpgrade: (key) => {
-    const state = get();
-    const item = upgradesCatalog.find((entry) => entry.key === key);
-    if (!item) {
-      return;
-    }
-    if (state.save.credits < item.cost) {
-      return;
-    }
-    if (key === 'inspector' && state.save.upgrades.inspectorPlus) {
-      return;
-    }
-
-    const nextSave: SaveData = {
-      ...state.save,
-      credits: state.save.credits - item.cost,
-      upgrades: applyUpgrade(state.save.upgrades, key),
-    };
-    persistSaveData(nextSave);
-    set({ save: nextSave });
   },
 }));

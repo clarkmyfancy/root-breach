@@ -56,5 +56,6 @@ export interface SimulationResult {
   events: EventRecord[];
   outcome: 'success' | 'failure';
   finalTick: number;
+  tickLimit: number;
   failureSummary?: FailureSummary;
 }

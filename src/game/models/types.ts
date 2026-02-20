@@ -92,7 +92,6 @@ export interface LevelDefinition {
   devices: Device[];
   networkScope: string[];
   constraints: LevelConstraints;
-  rewardCredits: number;
   suggestedScript?: string;
 }
 
@@ -110,13 +109,6 @@ export interface SimulationState {
   player: PlayerState;
   devices: Record<string, Device>;
   outcome: 'running' | 'success' | 'failure';
-}
-
-export interface UpgradeState {
-  maxLinesBonus: number;
-  maxCommandsBonus: number;
-  maxDelayBonus: number;
-  inspectorPlus: boolean;
 }
 
 export interface EffectiveConstraints extends LevelConstraints {

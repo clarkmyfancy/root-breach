@@ -1,9 +1,5 @@
-import type { UpgradeState } from '../game/models/types';
-
 export interface SaveData {
   unlockedLevelIndex: number;
-  credits: number;
-  upgrades: UpgradeState;
   attemptsByLevel: Record<string, number>;
   completedLevels: Record<string, boolean>;
   bestScripts: Record<string, string>;
@@ -14,13 +10,6 @@ const STORAGE_KEY = 'breachloop_save_v1';
 
 export const defaultSaveData: SaveData = {
   unlockedLevelIndex: 0,
-  credits: 0,
-  upgrades: {
-    maxLinesBonus: 0,
-    maxCommandsBonus: 0,
-    maxDelayBonus: 0,
-    inspectorPlus: false,
-  },
   attemptsByLevel: {},
   completedLevels: {},
   bestScripts: {},
@@ -37,10 +26,6 @@ export function loadSaveData(): SaveData {
     return {
       ...defaultSaveData,
       ...parsed,
-      upgrades: {
-        ...defaultSaveData.upgrades,
-        ...parsed.upgrades,
-      },
       attemptsByLevel: parsed.attemptsByLevel ?? {},
       completedLevels: parsed.completedLevels ?? {},
       bestScripts: parsed.bestScripts ?? {},

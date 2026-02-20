@@ -52,10 +52,10 @@ export function validateParsedScript(
         break;
       }
       case 'camera.disable': {
-        if (!command.value || command.value <= 0) {
-          errors.push({ line: command.line, message: 'disable(n) must be greater than 0' });
+        if (command.value !== undefined && command.value <= 0) {
+          errors.push({ line: command.line, message: 'disable(n) must be greater than 0 when provided' });
         }
-        if (command.value && command.value > constraints.maxDelayTicks) {
+        if (command.value !== undefined && command.value > constraints.maxDelayTicks) {
           errors.push({
             line: command.line,
             message: `disable(${command.value}) exceeds level max (${constraints.maxDelayTicks})`,

@@ -55,9 +55,8 @@ export const level1: LevelDefinition = {
   constraints: {
     maxLines: 4,
     maxCommands: 4,
-    maxDelayTicks: 20,
-    tickLimit: 120,
+    maxDelayTicks: 15,
+    tickLimit: 15,
   },
-  rewardCredits: 100,
-  suggestedScript: `camera("C1").disable(20)\ndoor("D1").open()`,
+  suggestedScript: `camera("C1").disable(15)\ndoor("D1").open()`,
 };

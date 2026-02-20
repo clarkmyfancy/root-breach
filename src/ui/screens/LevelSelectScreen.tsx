@@ -11,7 +11,6 @@ export function LevelSelectScreen(): JSX.Element {
       <header className="level-select__header">
         <h2>Mission Board</h2>
         <div className="level-select__meta">
-          <span>Credits: {save.credits}</span>
           <button className="btn" onClick={goToMainMenu}>
             Main Menu
           </button>
@@ -29,7 +28,6 @@ export function LevelSelectScreen(): JSX.Element {
               <p>{level.brief}</p>
               <div className="level-card__meta">
                 <span>{completed ? 'Completed' : unlocked ? 'Unlocked' : 'Locked'}</span>
-                <span>Reward: {level.rewardCredits}</span>
               </div>
               <button className="btn btn-primary" disabled={!unlocked} onClick={() => startLevel(level.id)}>
                 {completed ? 'Replay Level' : 'Start Level'}

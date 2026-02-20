@@ -7,7 +7,7 @@ import { InspectorPanel } from '../panels/InspectorPanel';
 import { MapPanel } from '../panels/MapPanel';
 import { ReplayControls } from '../panels/ReplayControls';
 import { TerminalPanel } from '../panels/TerminalPanel';
-import { upgradesCatalog, useGameStore } from '../../store/useGameStore';
+import { useGameStore } from '../../store/useGameStore';
 
 export function LevelScreen(): JSX.Element {
   const phase = useGameStore((state) => state.phase);
@@ -20,8 +20,6 @@ export function LevelScreen(): JSX.Element {
   const failureSummary = useGameStore((state) => state.failureSummary);
   const scriptText = useGameStore((state) => state.scriptText);
   const compileErrors = useGameStore((state) => state.compileErrors);
-  const save = useGameStore((state) => state.save);
-  const lastReward = useGameStore((state) => state.lastReward);
 
   const goToMainMenu = useGameStore((state) => state.goToMainMenu);
   const openLevelSelect = useGameStore((state) => state.openLevelSelect);
@@ -35,7 +33,6 @@ export function LevelScreen(): JSX.Element {
   const setReplaySpeed = useGameStore((state) => state.setReplaySpeed);
   const startLevel = useGameStore((state) => state.startLevel);
   const selectDevice = useGameStore((state) => state.selectDevice);
-  const purchaseUpgrade = useGameStore((state) => state.purchaseUpgrade);
 
   useEffect(() => {
     if (!replayPlaying) {
@@ -73,7 +70,7 @@ export function LevelScreen(): JSX.Element {
 
   const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
 
-  const constraints = getEffectiveConstraints(level, save.upgrades);
+  const constraints = getEffectiveConstraints(level);
   const activeLines = currentFrame?.executedLines ?? [];
 
   const levelIndex = levels.findIndex((entry) => entry.id === level.id);
@@ -88,7 +85,6 @@ export function LevelScreen(): JSX.Element {
         </div>
 
         <div className="level-header__actions">
-          <span>Credits: {save.credits}</span>
           <button className="btn" onClick={openLevelSelect}>
             Mission Board
           </button>
@@ -110,7 +106,7 @@ export function LevelScreen(): JSX.Element {
 
           <ReplayControls
             tick={tick}
-            maxTick={replayResult?.finalTick ?? 0}
+            maxTick={replayResult?.tickLimit ?? 0}
             playing={replayPlaying}
             speed={replaySpeed}
             onTogglePlay={toggleReplayPlaying}
@@ -118,25 +114,9 @@ export function LevelScreen(): JSX.Element {
             onSetSpeed={setReplaySpeed}
           />
 
-          {phase === 'failSummary' ? (
-            <div className="phase-card">
-              <FailureSummaryPanel summary={failureSummary} />
-              <div className="phase-card__actions">
-                <button className="btn btn-primary" onClick={openHack}>
-                  Open Terminal
-                </button>
-                <button className="btn" onClick={() => startLevel(level.id)}>
-                  Observe Again
-                </button>
-              </div>
-            </div>
-          ) : null}
-
           {phase === 'levelComplete' ? (
             <div className="phase-card">
               <h3>Level Complete</h3>
-              <p>Reward earned: {lastReward} credits</p>
-              <p>Total credits: {save.credits}</p>
               <div className="phase-card__actions">
                 {nextLevel ? (
                   <button className="btn btn-primary" onClick={() => startLevel(nextLevel.id)}>
@@ -150,27 +130,10 @@ export function LevelScreen(): JSX.Element {
                   Keep Tweaking Script
                 </button>
               </div>
-
-              <div className="upgrade-shop">
-                <h4>Upgrades</h4>
-                {upgradesCatalog.map((upgrade) => {
-                  const disabled =
-                    save.credits < upgrade.cost || (upgrade.key === 'inspector' && save.upgrades.inspectorPlus);
-                  return (
-                    <div key={upgrade.key} className="upgrade-row">
-                      <div>
-                        <strong>{upgrade.name}</strong>
-                        <div className="muted">{upgrade.description}</div>
-                      </div>
-                      <button className="btn" disabled={disabled} onClick={() => purchaseUpgrade(upgrade.key)}>
-                        Buy ({upgrade.cost})
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           ) : null}
+
+          <EventLogPanel events={visibleEvents} />
         </div>
 
         <div className="right-top-pane">
@@ -186,9 +149,22 @@ export function LevelScreen(): JSX.Element {
           />
         </div>
 
-        <div className="right-bottom-pane">
-          <EventLogPanel events={visibleEvents} inspectorPlus={save.upgrades.inspectorPlus} />
-          <InspectorPanel device={selectedDevice} />
+        <div className={phase === 'failSummary' ? 'right-bottom-pane right-bottom-pane--fail' : 'right-bottom-pane'}>
+          {phase === 'failSummary' ? (
+            <>
+              <FailureSummaryPanel summary={failureSummary} />
+              <div className="phase-card__actions">
+                <button className="btn btn-primary" onClick={openHack}>
+                  Open Terminal
+                </button>
+                <button className="btn" onClick={() => startLevel(level.id)}>
+                  Observe Again
+                </button>
+              </div>
+            </>
+          ) : (
+            <InspectorPanel device={selectedDevice} />
+          )}
         </div>
       </div>
     </div>

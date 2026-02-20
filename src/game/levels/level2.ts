@@ -52,13 +52,12 @@ export const level2: LevelDefinition = {
       enabled: true,
     },
   ],
-  networkScope: ['A2'],
+  networkScope: ['C2', 'D2', 'A2'],
   constraints: {
     maxLines: 2,
     maxCommands: 2,
     maxDelayTicks: 30,
-    tickLimit: 120,
+    tickLimit: 40,
   },
-  rewardCredits: 110,
   suggestedScript: `alarm().delay(12)`,
 };

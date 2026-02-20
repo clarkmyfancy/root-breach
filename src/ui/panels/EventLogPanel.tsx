@@ -2,7 +2,6 @@ import type { EventRecord } from '../../game/engine/eventTypes';
 
 interface EventLogPanelProps {
   events: EventRecord[];
-  inspectorPlus: boolean;
 }
 
 function formatEvent(event: EventRecord): string {
@@ -48,7 +47,7 @@ function formatEvent(event: EventRecord): string {
   }
 }
 
-export function EventLogPanel({ events, inspectorPlus }: EventLogPanelProps): JSX.Element {
+export function EventLogPanel({ events }: EventLogPanelProps): JSX.Element {
   const rows = events.slice(-180).reverse();
 
   return (
@@ -58,7 +57,6 @@ export function EventLogPanel({ events, inspectorPlus }: EventLogPanelProps): JS
         {rows.map((event) => (
           <div className="event-row" key={event.id}>
             <span className="event-tick">[{event.tick}]</span>
-            {inspectorPlus ? <span className="event-cat">{event.category}</span> : null}
             <span>{formatEvent(event)}</span>
           </div>
         ))}

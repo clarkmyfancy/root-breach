@@ -28,9 +28,6 @@ export function FailureSummaryPanel({ summary }: FailureSummaryPanelProps): JSX.
           ))}
         </ul>
       </div>
-      <p>
-        <strong>Suggested focus:</strong> {summary.suggestedFocus}
-      </p>
     </div>
   );
 }

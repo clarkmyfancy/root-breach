@@ -39,7 +39,7 @@ Local production test:
 - Device effects visible on map (camera disable, door open/close, alarm delay, turret retarget)
 - Failure summary with primary cause + cause chain + suggested focus
 - 5 handcrafted levels with increasing interactions
-- Progress persistence via localStorage (unlocks, credits, upgrades, scripts)
+- Progress persistence via localStorage (unlocks and scripts)
 
 ## Project Structure
 

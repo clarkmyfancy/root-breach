@@ -1,14 +1,15 @@
-import type { EffectiveConstraints, LevelDefinition, UpgradeState } from '../models/types';
+import type { EffectiveConstraints, LevelDefinition } from '../models/types';
+import { GLOBAL_TICK_LIMIT } from '../engine/constants';
 import { parseScript } from './parser';
 import type { CompiledCommand, CompileResult } from './scriptTypes';
 import { validateParsedScript } from './validator';
 
-export function getEffectiveConstraints(level: LevelDefinition, upgrades: UpgradeState): EffectiveConstraints {
+export function getEffectiveConstraints(level: LevelDefinition): EffectiveConstraints {
   return {
     ...level.constraints,
-    maxLines: level.constraints.maxLines + upgrades.maxLinesBonus,
-    maxCommands: level.constraints.maxCommands + upgrades.maxCommandsBonus,
-    maxDelayTicks: level.constraints.maxDelayTicks + upgrades.maxDelayBonus,
+    maxLines: level.constraints.maxLines,
+    maxCommands: level.constraints.maxCommands,
+    maxDelayTicks: level.constraints.maxDelayTicks,
   };
 }
 
@@ -36,13 +37,13 @@ function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']):
   return scheduled;
 }
 
-export function compileScript(source: string, level: LevelDefinition, upgrades: UpgradeState): CompileResult {
+export function compileScript(source: string, level: LevelDefinition): CompileResult {
   const parsed = parseScript(source);
   if (parsed.errors.length) {
     return { commands: [], errors: parsed.errors };
   }
 
-  const constraints = getEffectiveConstraints(level, upgrades);
+  const constraints = getEffectiveConstraints(level);
   const validationErrors = validateParsedScript(level, constraints, parsed.commands);
   if (validationErrors.length) {
     return { commands: [], errors: validationErrors };
@@ -50,11 +51,12 @@ export function compileScript(source: string, level: LevelDefinition, upgrades: 
 
   const scheduled = scheduleCommands(parsed.commands);
   const lastTick = scheduled.reduce((max, command) => Math.max(max, command.tick), 0);
+  const effectiveTickLimit = Math.min(constraints.tickLimit, GLOBAL_TICK_LIMIT);
 
-  if (lastTick > constraints.tickLimit) {
+  if (lastTick > effectiveTickLimit) {
     return {
       commands: [],
-      errors: [{ line: 1, message: `Script schedule exceeds level tick limit (${constraints.tickLimit})` }],
+      errors: [{ line: 1, message: `Script schedule exceeds run tick limit (${effectiveTickLimit})` }],
     };
   }
 

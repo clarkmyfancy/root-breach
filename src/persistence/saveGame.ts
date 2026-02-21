@@ -4,6 +4,7 @@ export interface SaveData {
   completedLevels: Record<string, boolean>;
   bestScripts: Record<string, string>;
   lastScripts: Record<string, string>;
+  seenLevel1Walkthrough: boolean;
 }
 
 const STORAGE_KEY = 'root_breach_save_v1';
@@ -14,6 +15,7 @@ export const defaultSaveData: SaveData = {
   completedLevels: {},
   bestScripts: {},
   lastScripts: {},
+  seenLevel1Walkthrough: false,
 };
 
 export function loadSaveData(): SaveData {
@@ -30,6 +32,7 @@ export function loadSaveData(): SaveData {
       completedLevels: parsed.completedLevels ?? {},
       bestScripts: parsed.bestScripts ?? {},
       lastScripts: parsed.lastScripts ?? {},
+      seenLevel1Walkthrough: Boolean(parsed.seenLevel1Walkthrough),
     };
   } catch {
     return { ...defaultSaveData };

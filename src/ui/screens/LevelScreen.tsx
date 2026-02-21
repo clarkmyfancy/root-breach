@@ -6,7 +6,33 @@ import { InspectorPanel } from '../panels/InspectorPanel';
 import { MapPanel } from '../panels/MapPanel';
 import { ReplayControls } from '../panels/ReplayControls';
 import { TerminalPanel } from '../panels/TerminalPanel';
+import { WalkthroughPanel } from '../panels/WalkthroughPanel';
 import { useGameStore } from '../../store/useGameStore';
+
+type WalkthroughTarget = 'map' | 'terminalInput' | 'compileButton' | 'eventLog';
+
+const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: WalkthroughTarget }> = [
+  {
+    title: 'Read The Map And Core Loop',
+    body: 'Your agent auto-runs this route. The loop is: fail, inspect what happened, patch script, replay from tick 0.',
+    target: 'map',
+  },
+  {
+    title: 'Write Commands In Terminal',
+    body: 'Type commands here to change the level state. For Level 1, start with: door("D1").open()',
+    target: 'terminalInput',
+  },
+  {
+    title: 'Compile Before Replay',
+    body: 'Use Compile to validate syntax and devices. If there is an error, the line number appears below the terminal.',
+    target: 'compileButton',
+  },
+  {
+    title: 'Use Event Log To Debug',
+    body: 'The event log shows state changes over time. Use timestamps to understand what happened and when.',
+    target: 'eventLog',
+  },
+];
 
 export function LevelScreen(): JSX.Element {
   const phase = useGameStore((state) => state.phase);
@@ -19,6 +45,8 @@ export function LevelScreen(): JSX.Element {
   const failureSummary = useGameStore((state) => state.failureSummary);
   const scriptText = useGameStore((state) => state.scriptText);
   const compileErrors = useGameStore((state) => state.compileErrors);
+  const walkthroughActive = useGameStore((state) => state.walkthroughActive);
+  const walkthroughStep = useGameStore((state) => state.walkthroughStep);
 
   const goToMainMenu = useGameStore((state) => state.goToMainMenu);
   const openLevelSelect = useGameStore((state) => state.openLevelSelect);
@@ -32,6 +60,9 @@ export function LevelScreen(): JSX.Element {
   const setReplaySpeed = useGameStore((state) => state.setReplaySpeed);
   const startLevel = useGameStore((state) => state.startLevel);
   const selectDevice = useGameStore((state) => state.selectDevice);
+  const nextWalkthroughStep = useGameStore((state) => state.nextWalkthroughStep);
+  const prevWalkthroughStep = useGameStore((state) => state.prevWalkthroughStep);
+  const dismissWalkthrough = useGameStore((state) => state.dismissWalkthrough);
 
   useEffect(() => {
     if (!replayPlaying) {
@@ -68,6 +99,8 @@ export function LevelScreen(): JSX.Element {
   }
 
   const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
+  const walkthroughStepData =
+    walkthroughActive && level.id === 'level1' ? levelOneWalkthroughSteps[walkthroughStep] : null;
 
   const levelIndex = levels.findIndex((entry) => entry.id === level.id);
   const nextLevel = levelIndex >= 0 ? levels[levelIndex + 1] : undefined;
@@ -98,6 +131,7 @@ export function LevelScreen(): JSX.Element {
             tick={tick}
             selectedDeviceId={selectedDeviceId}
             onSelectDevice={selectDevice}
+            highlighted={walkthroughStepData?.target === 'map'}
           />
 
           <ReplayControls
@@ -130,7 +164,7 @@ export function LevelScreen(): JSX.Element {
             </div>
           ) : null}
 
-          <EventLogPanel events={visibleEvents} />
+          <EventLogPanel events={visibleEvents} highlighted={walkthroughStepData?.target === 'eventLog'} />
         </div>
 
         <div className="right-top-pane">
@@ -141,6 +175,8 @@ export function LevelScreen(): JSX.Element {
             onCompile={compileCurrentScript}
             onReplay={runReplay}
             onResetScript={resetScript}
+            highlightInput={walkthroughStepData?.target === 'terminalInput'}
+            highlightCompile={walkthroughStepData?.target === 'compileButton'}
           />
         </div>
 
@@ -152,6 +188,20 @@ export function LevelScreen(): JSX.Element {
           )}
         </div>
       </div>
+
+      {walkthroughStepData ? (
+        <WalkthroughPanel
+          step={walkthroughStep}
+          totalSteps={levelOneWalkthroughSteps.length}
+          title={walkthroughStepData.title}
+          body={walkthroughStepData.body}
+          canGoBack={walkthroughStep > 0}
+          isLastStep={walkthroughStep >= levelOneWalkthroughSteps.length - 1}
+          onBack={prevWalkthroughStep}
+          onNext={nextWalkthroughStep}
+          onSkip={dismissWalkthrough}
+        />
+      ) : null}
     </div>
   );
 }

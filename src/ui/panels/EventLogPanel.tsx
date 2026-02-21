@@ -2,6 +2,7 @@ import type { EventRecord } from '../../game/engine/eventTypes';
 
 interface EventLogPanelProps {
   events: EventRecord[];
+  highlighted?: boolean;
 }
 
 function formatEvent(event: EventRecord): string {
@@ -47,11 +48,11 @@ function formatEvent(event: EventRecord): string {
   }
 }
 
-export function EventLogPanel({ events }: EventLogPanelProps): JSX.Element {
+export function EventLogPanel({ events, highlighted = false }: EventLogPanelProps): JSX.Element {
   const rows = events.slice(-180).reverse();
 
   return (
-    <div className="panel panel-log">
+    <div className={`panel panel-log ${highlighted ? 'tutorial-focus' : ''}`}>
       <div className="panel__title">Event Log</div>
       <div className="event-log">
         {rows.map((event) => (

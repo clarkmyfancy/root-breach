@@ -8,6 +8,8 @@ interface TerminalPanelProps {
   onCompile: () => void;
   onReplay: () => void;
   onResetScript: () => void;
+  highlightInput?: boolean;
+  highlightCompile?: boolean;
 }
 
 const apiReference = [
@@ -30,6 +32,8 @@ export function TerminalPanel({
   onCompile,
   onReplay,
   onResetScript,
+  highlightInput = false,
+  highlightCompile = false,
 }: TerminalPanelProps): JSX.Element {
   const [showHelp, setShowHelp] = useState(false);
 
@@ -62,14 +66,14 @@ export function TerminalPanel({
       ) : null}
 
       <textarea
-        className="terminal-input"
+        className={`terminal-input ${highlightInput ? 'tutorial-focus' : ''}`}
         value={source}
         onChange={(event) => onChange(event.target.value)}
         spellCheck={false}
       />
 
       <div className="terminal-actions">
-        <button className="btn" onClick={onCompile}>
+        <button className={`btn terminal-compile-btn ${highlightCompile ? 'tutorial-focus' : ''}`} onClick={onCompile}>
           Compile
         </button>
         <button className="btn btn-primary" onClick={onReplay}>

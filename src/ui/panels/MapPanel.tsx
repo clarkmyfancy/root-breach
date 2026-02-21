@@ -10,6 +10,7 @@ interface MapPanelProps {
   tick: number;
   selectedDeviceId: string | null;
   onSelectDevice: (id: string | null) => void;
+  highlighted?: boolean;
 }
 
 function drawDevice(
@@ -85,7 +86,14 @@ function drawDevice(
   ctx.restore();
 }
 
-export function MapPanel({ level, snapshot, tick, selectedDeviceId, onSelectDevice }: MapPanelProps): JSX.Element {
+export function MapPanel({
+  level,
+  snapshot,
+  tick,
+  selectedDeviceId,
+  onSelectDevice,
+  highlighted = false,
+}: MapPanelProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const devices = useMemo(
@@ -194,7 +202,7 @@ export function MapPanel({ level, snapshot, tick, selectedDeviceId, onSelectDevi
   };
 
   return (
-    <div className="panel panel-map">
+    <div className={`panel panel-map ${highlighted ? 'tutorial-focus' : ''}`}>
       <div className="panel__title">Map / Replay</div>
       <canvas ref={canvasRef} className="map-canvas" onClick={onClick} />
     </div>

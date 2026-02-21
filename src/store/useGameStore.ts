@@ -30,6 +30,8 @@ interface GameStore {
   failureSummary: FailureSummary | null;
   save: SaveData;
   lastOutcome: 'success' | 'failure' | null;
+  walkthroughActive: boolean;
+  walkthroughStep: number;
 
   goToMainMenu: () => void;
   openLevelSelect: () => void;
@@ -45,6 +47,9 @@ interface GameStore {
   clearReplay: () => void;
   advanceReplay: () => void;
   selectDevice: (deviceId: string | null) => void;
+  nextWalkthroughStep: () => void;
+  prevWalkthroughStep: () => void;
+  dismissWalkthrough: () => void;
 }
 
 function countScriptCommands(source: string): number {
@@ -55,6 +60,7 @@ function countScriptCommands(source: string): number {
 }
 
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
+const LAST_WALKTHROUGH_STEP = 3;
 
 function getInitialScript(_levelId: string): string {
   return '';
@@ -73,6 +79,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   failureSummary: null,
   save: initialSave,
   lastOutcome: null,
+  walkthroughActive: false,
+  walkthroughStep: 0,
 
   goToMainMenu: () => {
     set({
@@ -85,6 +93,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedDeviceId: null,
       compileErrors: [],
       lastOutcome: null,
+      walkthroughActive: false,
+      walkthroughStep: 0,
     });
   },
 
@@ -118,6 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     persistSaveData(saveAfter);
 
     const result = runSimulation(level, commands);
+    const walkthroughActive = levelId === 'level1' && !saveBefore.seenLevel1Walkthrough;
     set({
       phase: 'runObserve',
       currentLevelId: levelId,
@@ -131,6 +142,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       failureSummary: result.failureSummary ?? null,
       save: saveAfter,
       lastOutcome: null,
+      walkthroughActive,
+      walkthroughStep: 0,
     });
   },
 
@@ -275,6 +288,53 @@ export const useGameStore = create<GameStore>((set, get) => ({
       failureSummary: null,
       phase: 'hack',
       selectedDeviceId: null,
+    });
+  },
+
+  nextWalkthroughStep: () => {
+    const state = get();
+    if (!state.walkthroughActive) {
+      return;
+    }
+
+    if (state.walkthroughStep >= LAST_WALKTHROUGH_STEP) {
+      const nextSave = state.save.seenLevel1Walkthrough
+        ? state.save
+        : { ...state.save, seenLevel1Walkthrough: true };
+      if (!state.save.seenLevel1Walkthrough) {
+        persistSaveData(nextSave);
+      }
+      set({
+        walkthroughActive: false,
+        walkthroughStep: 0,
+        save: nextSave,
+      });
+      return;
+    }
+
+    set({ walkthroughStep: state.walkthroughStep + 1 });
+  },
+
+  prevWalkthroughStep: () => {
+    const state = get();
+    if (!state.walkthroughActive) {
+      return;
+    }
+    set({ walkthroughStep: Math.max(0, state.walkthroughStep - 1) });
+  },
+
+  dismissWalkthrough: () => {
+    const state = get();
+    const nextSave = state.save.seenLevel1Walkthrough
+      ? state.save
+      : { ...state.save, seenLevel1Walkthrough: true };
+    if (!state.save.seenLevel1Walkthrough) {
+      persistSaveData(nextSave);
+    }
+    set({
+      walkthroughActive: false,
+      walkthroughStep: 0,
+      save: nextSave,
     });
   },
 

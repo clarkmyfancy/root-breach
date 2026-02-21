@@ -190,6 +190,11 @@ textarea {
   min-height: 0;
 }
 
+.tutorial-focus {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.32);
+}
+
 .panel__title {
   font-weight: 700;
   color: #d2e4ff;
@@ -435,6 +440,42 @@ textarea {
   min-height: 100vh;
   display: grid;
   place-items: center;
+}
+
+.walkthrough-card {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  width: min(430px, calc(100vw - 2rem));
+  background: rgba(5, 13, 30, 0.98);
+  border: 1px solid #2c4f80;
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  z-index: 30;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.walkthrough-card__step {
+  color: #7dd3fc;
+  font-size: 0.82rem;
+  margin-bottom: 0.2rem;
+}
+
+.walkthrough-card__title {
+  margin: 0;
+  font-size: 1rem;
+  color: #d8ecff;
+}
+
+.walkthrough-card__body {
+  margin: 0.45rem 0 0.7rem;
+  color: #c6daff;
+}
+
+.walkthrough-card__actions {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: flex-end;
 }
 
 @media (max-width: 1200px) {

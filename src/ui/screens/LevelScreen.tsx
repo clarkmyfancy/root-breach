@@ -150,6 +150,7 @@ export function LevelScreen(): JSX.Element {
           <MapPanel
             level={level}
             snapshot={currentFrame?.snapshot ?? null}
+            frameEvents={currentFrame?.events ?? []}
             tick={tick}
             selectedDeviceId={selectedDeviceId}
             onSelectDevice={selectDevice}

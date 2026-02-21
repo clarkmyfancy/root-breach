@@ -341,7 +341,7 @@ function resolveTarget(state: SimulationState, preferredTargetId: string | null)
   return playerTarget;
 }
 
-function updateTurrets(ctx: TickContext): void {
+function updateTurrets(ctx: TickContext, detected: boolean): void {
   const alarm = getAlarm(ctx.state);
 
   for (const device of Object.values(ctx.state.devices)) {
@@ -354,7 +354,10 @@ function updateTurrets(ctx: TickContext): void {
       continue;
     }
 
-    const active = turret.alarmTrigger === 'ALWAYS' || alarm?.state === 'RED';
+    const active =
+      turret.alarmTrigger === 'ALWAYS' ||
+      (turret.alarmTrigger === 'RED' && alarm?.state === 'RED') ||
+      (turret.alarmTrigger === 'DETECTION' && (detected || turret.currentTargetId !== null));
     if (!active) {
       turret.currentTargetId = null;
       turret.lockTicks = 0;
@@ -523,7 +526,7 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     updateDroneMovement(ctx);
     const detected = updateCameraDetection(ctx);
     updateAlarmBus(ctx, detected);
-    updateTurrets(ctx);
+    updateTurrets(ctx, detected);
     updatePlayerMovement(ctx);
 
     const done = checkWinLose(ctx);
@@ -539,6 +542,12 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     events.push(...ctx.eventsThisTick);
 
     if (ctx.state.outcome !== 'running') {
+      const killedThisTick = ctx.eventsThisTick.some((event) => event.type === 'PLAYER_KILLED');
+      if (killedThisTick) {
+        // Add one settle frame after kill so transient muzzle/projectile effects clear.
+        ctx.state.tick += 1;
+        frames.push(buildFrame(ctx.state, [], []));
+      }
       break;
     }
   }

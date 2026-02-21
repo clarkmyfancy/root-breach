@@ -27,7 +27,7 @@ export interface TurretDevice extends BaseDevice {
   type: 'turret';
   range: number;
   lockDelay: number;
-  alarmTrigger: 'RED' | 'ALWAYS';
+  alarmTrigger: 'RED' | 'ALWAYS' | 'DETECTION';
   desiredTargetId: string | null;
   currentTargetId: string | null;
   lockTicks: number;

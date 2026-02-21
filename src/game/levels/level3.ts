@@ -3,8 +3,8 @@ import { horizontalPath } from './helpers';
 
 export const level3: LevelDefinition = {
   id: 'level3',
-  name: 'L3: Friendly Fire',
-  brief: 'You cannot touch the camera. Reroute the turret onto a drone.',
+  name: 'L3: First Turret',
+  brief: 'If the camera sees you, the turret pivots and fires. Disable the camera and open the route.',
   map: {
     width: 13,
     height: 9,
@@ -30,7 +30,7 @@ export const level3: LevelDefinition = {
       x: 3,
       y: 5,
       enabled: true,
-      isOpen: false,
+      isOpen: true,
     },
     {
       id: 'T3',
@@ -40,27 +40,10 @@ export const level3: LevelDefinition = {
       enabled: true,
       range: 7,
       lockDelay: 3,
-      alarmTrigger: 'RED',
+      alarmTrigger: 'DETECTION',
       desiredTargetId: null,
       currentTargetId: null,
       lockTicks: 0,
-    },
-    {
-      id: 'DR3',
-      type: 'drone',
-      x: 8,
-      y: 4,
-      enabled: true,
-      alive: true,
-      path: [
-        { x: 8, y: 4 },
-        { x: 9, y: 4 },
-        { x: 9, y: 3 },
-        { x: 8, y: 3 },
-      ],
-      pathIndex: 0,
-      stepInterval: 1,
-      stepTimer: 0,
     },
     {
       id: 'A3',
@@ -81,9 +64,9 @@ export const level3: LevelDefinition = {
       enabled: true,
     },
   ],
-  networkScope: ['D3', 'T3', 'DR3'],
+  networkScope: ['C3', 'D3'],
   constraints: {
     tickLimit: 70,
   },
-  suggestedScript: `door("D3").open()\nturret("T3").retarget("DR3")`,
+  suggestedScript: `camera("C3").disable(20)`,
 };

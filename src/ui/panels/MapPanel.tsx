@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
 import type { LevelDefinition } from '../../game/models/types';
-import type { SimulationSnapshot } from '../../game/engine/eventTypes';
+import type { EventRecord, SimulationSnapshot } from '../../game/engine/eventTypes';
 
 const TILE = 42;
 
@@ -11,10 +11,12 @@ interface MapPanelProps {
   selectedDeviceId: string | null;
   onSelectDevice: (id: string | null) => void;
   highlighted?: boolean;
+  frameEvents?: EventRecord[];
 }
 
 function drawDevice(
   ctx: CanvasRenderingContext2D,
+  snapshot: SimulationSnapshot,
   device: SimulationSnapshot['devices'][string],
   selected: boolean,
 ): void {
@@ -39,9 +41,38 @@ function drawDevice(
       break;
     }
     case 'turret': {
-      ctx.fillStyle = device.enabled ? '#f87171' : '#5f3c3c';
-      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-      ctx.strokeRect(cx - radius, cy - radius, radius * 2, radius * 2);
+      let tx = cx;
+      let ty = cy - TILE * 0.4;
+      const targetId = device.currentTargetId;
+      if (targetId === 'player') {
+        tx = snapshot.player.x * TILE + TILE / 2;
+        ty = snapshot.player.y * TILE + TILE / 2;
+      } else if (targetId) {
+        const target = snapshot.devices[targetId];
+        if (target) {
+          tx = target.x * TILE + TILE / 2;
+          ty = target.y * TILE + TILE / 2;
+        }
+      }
+
+      const dx = tx - cx;
+      const dy = ty - cy;
+      const magnitude = Math.max(1, Math.hypot(dx, dy));
+      const ux = dx / magnitude;
+      const uy = dy / magnitude;
+
+      ctx.fillStyle = device.enabled ? '#ef4444' : '#5f3c3c';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = device.enabled ? '#fecaca' : '#7f4747';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + ux * TILE * 0.38, cy + uy * TILE * 0.38);
+      ctx.stroke();
       break;
     }
     case 'drone': {
@@ -86,6 +117,58 @@ function drawDevice(
   ctx.restore();
 }
 
+function drawProjectileEffects(
+  ctx: CanvasRenderingContext2D,
+  snapshot: SimulationSnapshot,
+  frameEvents: EventRecord[],
+): void {
+  for (const event of frameEvents) {
+    if (event.type !== 'TURRET_FIRED') {
+      continue;
+    }
+
+    const turretId = String(event.payload.turretId ?? '');
+    const targetId = String(event.payload.targetId ?? '');
+    const turret = snapshot.devices[turretId];
+    if (!turret || turret.type !== 'turret') {
+      continue;
+    }
+
+    const sx = turret.x * TILE + TILE / 2;
+    const sy = turret.y * TILE + TILE / 2;
+
+    let ex = sx;
+    let ey = sy;
+    if (targetId === 'player') {
+      ex = snapshot.player.x * TILE + TILE / 2;
+      ey = snapshot.player.y * TILE + TILE / 2;
+    } else {
+      const target = snapshot.devices[targetId];
+      if (!target) {
+        continue;
+      }
+      ex = target.x * TILE + TILE / 2;
+      ey = target.y * TILE + TILE / 2;
+    }
+
+    ctx.save();
+    ctx.strokeStyle = '#fb7185';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+
+    const px = sx + (ex - sx) * 0.72;
+    const py = sy + (ey - sy) * 0.72;
+    ctx.fillStyle = '#fde68a';
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 export function MapPanel({
   level,
   snapshot,
@@ -93,6 +176,7 @@ export function MapPanel({
   selectedDeviceId,
   onSelectDevice,
   highlighted = false,
+  frameEvents = [],
 }: MapPanelProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -159,11 +243,11 @@ export function MapPanel({
     ctx.fillStyle = '#38bdf8';
     ctx.fillRect(level.exit.x * TILE + TILE * 0.2, level.exit.y * TILE + TILE * 0.2, TILE * 0.6, TILE * 0.6);
 
-    for (const device of devices) {
-      drawDevice(ctx, device, device.id === selectedDeviceId);
-    }
-
     if (snapshot) {
+      for (const device of devices) {
+        drawDevice(ctx, snapshot, device, device.id === selectedDeviceId);
+      }
+
       const playerX = snapshot.player.x * TILE + TILE / 2;
       const playerY = snapshot.player.y * TILE + TILE / 2;
       ctx.fillStyle = snapshot.player.alive ? '#e2e8f0' : '#f43f5e';
@@ -173,13 +257,15 @@ export function MapPanel({
       ctx.strokeStyle = '#0f172a';
       ctx.lineWidth = 1;
       ctx.stroke();
+
+      drawProjectileEffects(ctx, snapshot, frameEvents);
     }
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = '12px Menlo, monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`Tick ${tick}`, 8, 16);
-  }, [level, snapshot, tick, devices, selectedDeviceId]);
+  }, [level, snapshot, tick, devices, selectedDeviceId, frameEvents]);
 
   const onClick = (event: MouseEvent<HTMLCanvasElement>) => {
     if (!snapshot) {

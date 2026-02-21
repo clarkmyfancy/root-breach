@@ -53,9 +53,6 @@ export const level1: LevelDefinition = {
   ],
   networkScope: ['C1', 'D1', 'A1'],
   constraints: {
-    maxLines: 4,
-    maxCommands: 4,
-    maxDelayTicks: 15,
     tickLimit: 15,
   },
   suggestedScript: `camera("C1").disable(15)\ndoor("D1").open()`,

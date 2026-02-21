@@ -93,9 +93,6 @@ export const level4: LevelDefinition = {
   ],
   networkScope: ['C4A', 'C4B', 'D4', 'T4', 'DR4'],
   constraints: {
-    maxLines: 6,
-    maxCommands: 6,
-    maxDelayTicks: 6,
     tickLimit: 95,
   },
   suggestedScript: `camera("C4A").disable(6)\ndoor("D4").open()\nwait(6)\ncamera("C4B").disable(6)`,

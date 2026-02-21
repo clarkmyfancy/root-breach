@@ -1,17 +1,8 @@
-import type { EffectiveConstraints, LevelDefinition } from '../models/types';
+import type { LevelDefinition } from '../models/types';
 import { GLOBAL_TICK_LIMIT } from '../engine/constants';
 import { parseScript } from './parser';
 import type { CompiledCommand, CompileResult } from './scriptTypes';
 import { validateParsedScript } from './validator';
-
-export function getEffectiveConstraints(level: LevelDefinition): EffectiveConstraints {
-  return {
-    ...level.constraints,
-    maxLines: level.constraints.maxLines,
-    maxCommands: level.constraints.maxCommands,
-    maxDelayTicks: level.constraints.maxDelayTicks,
-  };
-}
 
 function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']): CompiledCommand[] {
   const scheduled: CompiledCommand[] = [];
@@ -43,15 +34,14 @@ export function compileScript(source: string, level: LevelDefinition): CompileRe
     return { commands: [], errors: parsed.errors };
   }
 
-  const constraints = getEffectiveConstraints(level);
-  const validationErrors = validateParsedScript(level, constraints, parsed.commands);
+  const validationErrors = validateParsedScript(level, parsed.commands);
   if (validationErrors.length) {
     return { commands: [], errors: validationErrors };
   }
 
   const scheduled = scheduleCommands(parsed.commands);
   const lastTick = scheduled.reduce((max, command) => Math.max(max, command.tick), 0);
-  const effectiveTickLimit = Math.min(constraints.tickLimit, GLOBAL_TICK_LIMIT);
+  const effectiveTickLimit = Math.min(level.constraints.tickLimit, GLOBAL_TICK_LIMIT);
 
   if (lastTick > effectiveTickLimit) {
     return {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import { getEffectiveConstraints } from '../../game/compiler/compile';
 import { levelById, levels } from '../../game/levels';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
@@ -70,9 +69,6 @@ export function LevelScreen(): JSX.Element {
 
   const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
 
-  const constraints = getEffectiveConstraints(level);
-  const activeLines = currentFrame?.executedLines ?? [];
-
   const levelIndex = levels.findIndex((entry) => entry.id === level.id);
   const nextLevel = levelIndex >= 0 ? levels[levelIndex + 1] : undefined;
 
@@ -111,6 +107,7 @@ export function LevelScreen(): JSX.Element {
             speed={replaySpeed}
             onTogglePlay={toggleReplayPlaying}
             onReset={resetReplay}
+            onReplay={runReplay}
             onSetSpeed={setReplaySpeed}
           />
 
@@ -140,8 +137,6 @@ export function LevelScreen(): JSX.Element {
           <TerminalPanel
             source={scriptText}
             errors={compileErrors}
-            activeLines={activeLines}
-            constraints={constraints}
             onChange={updateScript}
             onCompile={compileCurrentScript}
             onReplay={runReplay}
@@ -151,17 +146,7 @@ export function LevelScreen(): JSX.Element {
 
         <div className={phase === 'failSummary' ? 'right-bottom-pane right-bottom-pane--fail' : 'right-bottom-pane'}>
           {phase === 'failSummary' ? (
-            <>
-              <FailureSummaryPanel summary={failureSummary} />
-              <div className="phase-card__actions">
-                <button className="btn btn-primary" onClick={openHack}>
-                  Open Terminal
-                </button>
-                <button className="btn" onClick={() => startLevel(level.id)}>
-                  Observe Again
-                </button>
-              </div>
-            </>
+            <FailureSummaryPanel summary={failureSummary} />
           ) : (
             <InspectorPanel device={selectedDevice} />
           )}

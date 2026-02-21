@@ -54,9 +54,6 @@ export const level2: LevelDefinition = {
   ],
   networkScope: ['C2', 'D2', 'A2'],
   constraints: {
-    maxLines: 2,
-    maxCommands: 2,
-    maxDelayTicks: 30,
     tickLimit: 40,
   },
   suggestedScript: `alarm().delay(12)`,

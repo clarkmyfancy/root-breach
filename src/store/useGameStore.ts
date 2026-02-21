@@ -42,6 +42,7 @@ interface GameStore {
   setReplaySpeed: (speed: ReplaySpeed) => void;
   toggleReplayPlaying: () => void;
   resetReplay: () => void;
+  clearReplay: () => void;
   advanceReplay: () => void;
   selectDevice: (deviceId: string | null) => void;
 }
@@ -264,6 +265,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   resetReplay: () => {
     set({ frameIndex: 0, replayPlaying: false });
+  },
+
+  clearReplay: () => {
+    set({
+      replayResult: null,
+      frameIndex: 0,
+      replayPlaying: false,
+      failureSummary: null,
+      phase: 'hack',
+      selectedDeviceId: null,
+    });
   },
 
   advanceReplay: () => {

@@ -83,9 +83,6 @@ export const level3: LevelDefinition = {
   ],
   networkScope: ['D3', 'T3', 'DR3'],
   constraints: {
-    maxLines: 4,
-    maxCommands: 4,
-    maxDelayTicks: 20,
     tickLimit: 70,
   },
   suggestedScript: `door("D3").open()\nturret("T3").retarget("DR3")`,

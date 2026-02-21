@@ -101,9 +101,6 @@ export const level5: LevelDefinition = {
   ],
   networkScope: ['C5A', 'C5B', 'D5A', 'D5B', 'T5', 'DR5'],
   constraints: {
-    maxLines: 5,
-    maxCommands: 5,
-    maxDelayTicks: 8,
     tickLimit: 120,
   },
   suggestedScript: `camera("C5A").disable(8)\ndoor("D5A").open()\nwait(5)\ndoor("D5B").open()\ncamera("C5B").disable(8)`,

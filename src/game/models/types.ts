@@ -69,9 +69,6 @@ export type Device =
   | TerminalDevice;
 
 export interface LevelConstraints {
-  maxLines: number;
-  maxCommands: number;
-  maxDelayTicks: number;
   tickLimit: number;
 }
 
@@ -109,10 +106,4 @@ export interface SimulationState {
   player: PlayerState;
   devices: Record<string, Device>;
   outcome: 'running' | 'success' | 'failure';
-}
-
-export interface EffectiveConstraints extends LevelConstraints {
-  maxLines: number;
-  maxCommands: number;
-  maxDelayTicks: number;
 }

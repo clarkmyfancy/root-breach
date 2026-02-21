@@ -15,33 +15,12 @@ export const level1: LevelDefinition = {
   playerPath: horizontalPath(4, 1, 10),
   devices: [
     {
-      id: 'C1',
-      type: 'camera',
-      x: 4,
-      y: 1,
-      enabled: true,
-      range: 5,
-      facing: 'down',
-      disabledUntilTick: null,
-    },
-    {
       id: 'D1',
       type: 'door',
       x: 6,
       y: 4,
       enabled: true,
       isOpen: false,
-    },
-    {
-      id: 'A1',
-      type: 'alarm',
-      x: 0,
-      y: 0,
-      enabled: true,
-      state: 'GREEN',
-      baseEscalationTicks: 8,
-      redAtTick: null,
-      manualDelayBuffer: 0,
     },
     {
       id: 'TERM1',
@@ -51,9 +30,9 @@ export const level1: LevelDefinition = {
       enabled: true,
     },
   ],
-  networkScope: ['C1', 'D1', 'A1'],
+  networkScope: ['D1'],
   constraints: {
     tickLimit: 15,
   },
-  suggestedScript: `camera("C1").disable(15)\ndoor("D1").open()`,
+  suggestedScript: `door("D1").open()`,
 };

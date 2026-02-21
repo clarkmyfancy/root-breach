@@ -5,6 +5,22 @@ import { runSimulation } from '../game/engine/simulationRunner';
 import type { FailureSummary, SimulationResult } from '../game/engine/eventTypes';
 import { levelById, levels } from '../game/levels';
 import { defaultSaveData, loadSaveData, persistSaveData, type SaveData } from '../persistence/saveGame';
+import {
+  withAttemptAndScript,
+  withLevelCompletion,
+  withScript,
+  withSeenLevel1Walkthrough,
+} from './progression';
+import {
+  applyWalkthroughAction,
+  advanceWalkthrough,
+  createWalkthroughForLevel,
+  defaultWalkthroughSlice,
+  retreatWalkthrough,
+  type WalkthroughAction,
+  type WalkthroughCompletionState,
+  type WalkthroughSlice,
+} from './walkthrough';
 
 export type ScreenPhase =
   | 'mainMenu'
@@ -16,12 +32,6 @@ export type ScreenPhase =
   | 'levelComplete';
 
 export type ReplaySpeed = 1 | 2 | 4;
-type WalkthroughAction = 'typedCommand' | 'compiled';
-
-interface WalkthroughCompletionState {
-  terminalInput: boolean;
-  compileButton: boolean;
-}
 
 interface GameStore {
   phase: ScreenPhase;
@@ -60,40 +70,39 @@ interface GameStore {
   markWalkthroughAction: (action: WalkthroughAction) => void;
 }
 
-function countScriptCommands(source: string): number {
-  return source
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('//') && !line.startsWith('#')).length;
-}
-
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
-const LAST_WALKTHROUGH_STEP = 3;
-const emptyWalkthroughCompletion: WalkthroughCompletionState = {
-  terminalInput: false,
-  compileButton: false,
-};
-
-function isStepAutoCompleted(step: number, completion: WalkthroughCompletionState): boolean {
-  if (step === 1) {
-    return completion.terminalInput;
-  }
-  if (step === 2) {
-    return completion.compileButton;
-  }
-  return false;
-}
-
-function getNextWalkthroughStep(step: number, completion: WalkthroughCompletionState): number {
-  let next = step + 1;
-  while (next <= LAST_WALKTHROUGH_STEP && isStepAutoCompleted(next, completion)) {
-    next += 1;
-  }
-  return next;
-}
 
 function getInitialScript(_levelId: string): string {
   return '';
+}
+
+function walkthroughFromState(state: GameStore): WalkthroughSlice {
+  return {
+    walkthroughActive: state.walkthroughActive,
+    walkthroughStep: state.walkthroughStep,
+    walkthroughCompletion: state.walkthroughCompletion,
+  };
+}
+
+function resolveWalkthroughOutcome(save: SaveData, walkthrough: WalkthroughSlice | null): {
+  save: SaveData;
+  walkthrough: WalkthroughSlice;
+  shouldPersist: boolean;
+} {
+  if (walkthrough) {
+    return {
+      save,
+      walkthrough,
+      shouldPersist: false,
+    };
+  }
+
+  const nextSave = withSeenLevel1Walkthrough(save);
+  return {
+    save: nextSave,
+    walkthrough: defaultWalkthroughSlice,
+    shouldPersist: nextSave !== save,
+  };
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -109,9 +118,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   failureSummary: null,
   save: initialSave,
   lastOutcome: null,
-  walkthroughActive: false,
-  walkthroughStep: 0,
-  walkthroughCompletion: emptyWalkthroughCompletion,
+  ...defaultWalkthroughSlice,
 
   goToMainMenu: () => {
     set({
@@ -124,9 +131,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedDeviceId: null,
       compileErrors: [],
       lastOutcome: null,
-      walkthroughActive: false,
-      walkthroughStep: 0,
-      walkthroughCompletion: emptyWalkthroughCompletion,
+      ...defaultWalkthroughSlice,
     });
   },
 
@@ -144,23 +149,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const script = getInitialScript(levelId);
     const observeCompiled = compileScript(script, level);
     const commands = observeCompiled.errors.length ? [] : observeCompiled.commands;
-
-    const attemptsByLevel = {
-      ...saveBefore.attemptsByLevel,
-      [levelId]: (saveBefore.attemptsByLevel[levelId] ?? 0) + 1,
-    };
-    const saveAfter = {
-      ...saveBefore,
-      attemptsByLevel,
-      lastScripts: {
-        ...saveBefore.lastScripts,
-        [levelId]: script,
-      },
-    };
+    const saveAfter = withAttemptAndScript(saveBefore, levelId, script);
     persistSaveData(saveAfter);
 
     const result = runSimulation(level, commands);
-    const walkthroughActive = levelId === 'level1' && !saveBefore.seenLevel1Walkthrough;
+    const walkthrough = createWalkthroughForLevel(levelId, saveBefore.seenLevel1Walkthrough);
     set({
       phase: 'runObserve',
       currentLevelId: levelId,
@@ -174,9 +167,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       failureSummary: result.failureSummary ?? null,
       save: saveAfter,
       lastOutcome: null,
-      walkthroughActive,
-      walkthroughStep: 0,
-      walkthroughCompletion: emptyWalkthroughCompletion,
+      ...walkthrough,
     });
   },
 
@@ -193,22 +184,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const nextSave = {
-      ...state.save,
-      lastScripts: {
-        ...state.save.lastScripts,
-        [state.currentLevelId]: source,
-      },
-    };
-    persistSaveData(nextSave);
+    const baseSave = withScript(state.save, state.currentLevelId, source);
+    let finalSave = baseSave;
+    let walkthrough = walkthroughFromState(state);
 
+    if (source.trim().length > 0) {
+      const resolved = resolveWalkthroughOutcome(baseSave, applyWalkthroughAction(walkthrough, 'typedCommand'));
+      finalSave = resolved.save;
+      walkthrough = resolved.walkthrough;
+    }
+
+    persistSaveData(finalSave);
     set({
       scriptText: source,
-      save: nextSave,
+      save: finalSave,
+      ...walkthrough,
     });
-    if (source.trim().length > 0) {
-      get().markWalkthroughAction('typedCommand');
-    }
   },
 
   resetScript: () => {
@@ -218,13 +209,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     const fallback = '';
-    const nextSave = {
-      ...state.save,
-      lastScripts: {
-        ...state.save.lastScripts,
-        [state.currentLevelId]: fallback,
-      },
-    };
+    const nextSave = withScript(state.save, state.currentLevelId, fallback);
     persistSaveData(nextSave);
 
     set({
@@ -271,19 +256,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const attemptsByLevel = {
-      ...state.save.attemptsByLevel,
-      [state.currentLevelId]: (state.save.attemptsByLevel[state.currentLevelId] ?? 0) + 1,
-    };
-
-    const nextSave = {
-      ...state.save,
-      attemptsByLevel,
-      lastScripts: {
-        ...state.save.lastScripts,
-        [state.currentLevelId]: state.scriptText,
-      },
-    };
+    const nextSave = withAttemptAndScript(state.save, state.currentLevelId, state.scriptText);
     persistSaveData(nextSave);
 
     const result = runSimulation(level, compiled.commands);
@@ -335,39 +308,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    if (state.walkthroughStep >= LAST_WALKTHROUGH_STEP) {
-      const nextSave = state.save.seenLevel1Walkthrough
-        ? state.save
-        : { ...state.save, seenLevel1Walkthrough: true };
-      if (!state.save.seenLevel1Walkthrough) {
-        persistSaveData(nextSave);
-      }
-      set({
-        walkthroughActive: false,
-        walkthroughStep: 0,
-        walkthroughCompletion: emptyWalkthroughCompletion,
-        save: nextSave,
-      });
-      return;
+    const resolved = resolveWalkthroughOutcome(state.save, advanceWalkthrough(walkthroughFromState(state)));
+    if (resolved.shouldPersist) {
+      persistSaveData(resolved.save);
     }
-
-    const nextStep = getNextWalkthroughStep(state.walkthroughStep, state.walkthroughCompletion);
-    if (nextStep > LAST_WALKTHROUGH_STEP) {
-      const nextSave = state.save.seenLevel1Walkthrough
-        ? state.save
-        : { ...state.save, seenLevel1Walkthrough: true };
-      if (!state.save.seenLevel1Walkthrough) {
-        persistSaveData(nextSave);
-      }
-      set({
-        walkthroughActive: false,
-        walkthroughStep: 0,
-        walkthroughCompletion: emptyWalkthroughCompletion,
-        save: nextSave,
-      });
-      return;
-    }
-    set({ walkthroughStep: nextStep });
+    set({
+      save: resolved.save,
+      ...resolved.walkthrough,
+    });
   },
 
   prevWalkthroughStep: () => {
@@ -375,25 +323,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.walkthroughActive) {
       return;
     }
-    let prev = Math.max(0, state.walkthroughStep - 1);
-    while (prev > 0 && isStepAutoCompleted(prev, state.walkthroughCompletion)) {
-      prev -= 1;
-    }
-    set({ walkthroughStep: prev });
+    set({
+      ...retreatWalkthrough(walkthroughFromState(state)),
+    });
   },
 
   dismissWalkthrough: () => {
     const state = get();
-    const nextSave = state.save.seenLevel1Walkthrough
-      ? state.save
-      : { ...state.save, seenLevel1Walkthrough: true };
-    if (!state.save.seenLevel1Walkthrough) {
+    const nextSave = withSeenLevel1Walkthrough(state.save);
+    if (nextSave !== state.save) {
       persistSaveData(nextSave);
     }
     set({
-      walkthroughActive: false,
-      walkthroughStep: 0,
-      walkthroughCompletion: emptyWalkthroughCompletion,
+      ...defaultWalkthroughSlice,
       save: nextSave,
     });
   },
@@ -403,37 +345,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.walkthroughActive || state.currentLevelId !== 'level1') {
       return;
     }
-
-    const nextCompletion: WalkthroughCompletionState = {
-      terminalInput: state.walkthroughCompletion.terminalInput || action === 'typedCommand',
-      compileButton: state.walkthroughCompletion.compileButton || action === 'compiled',
-    };
-
-    let nextStep = state.walkthroughStep;
-    const actionStep = action === 'typedCommand' ? 1 : 2;
-    if (state.walkthroughStep === actionStep && isStepAutoCompleted(actionStep, nextCompletion)) {
-      nextStep = getNextWalkthroughStep(state.walkthroughStep, nextCompletion);
+    const resolved = resolveWalkthroughOutcome(state.save, applyWalkthroughAction(walkthroughFromState(state), action));
+    if (resolved.shouldPersist) {
+      persistSaveData(resolved.save);
     }
-
-    if (nextStep > LAST_WALKTHROUGH_STEP) {
-      const nextSave = state.save.seenLevel1Walkthrough
-        ? state.save
-        : { ...state.save, seenLevel1Walkthrough: true };
-      if (!state.save.seenLevel1Walkthrough) {
-        persistSaveData(nextSave);
-      }
-      set({
-        walkthroughActive: false,
-        walkthroughStep: 0,
-        walkthroughCompletion: emptyWalkthroughCompletion,
-        save: nextSave,
-      });
-      return;
-    }
-
     set({
-      walkthroughCompletion: nextCompletion,
-      walkthroughStep: nextStep,
+      save: resolved.save,
+      ...resolved.walkthrough,
     });
   },
 
@@ -475,27 +393,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const levelIndex = levels.findIndex((entry) => entry.id === state.currentLevelId);
-    const nextUnlockedIndex = Math.max(state.save.unlockedLevelIndex, Math.min(levels.length - 1, levelIndex + 1));
-    const newBest = state.save.bestScripts[state.currentLevelId];
-    const currentCmdCount = countScriptCommands(state.scriptText);
-    const bestCmdCount = newBest ? countScriptCommands(newBest) : Number.POSITIVE_INFINITY;
-    const shouldUpdateBest = !newBest || currentCmdCount <= bestCmdCount;
-
-    const nextSave: SaveData = {
-      ...state.save,
-      unlockedLevelIndex: nextUnlockedIndex,
-      completedLevels: {
-        ...state.save.completedLevels,
-        [state.currentLevelId]: true,
-      },
-      bestScripts: shouldUpdateBest
-        ? {
-            ...state.save.bestScripts,
-            [state.currentLevelId]: state.scriptText,
-          }
-        : state.save.bestScripts,
-    };
+    const nextSave = withLevelCompletion(state.save, levels, state.currentLevelId, state.scriptText);
 
     persistSaveData(nextSave);
 

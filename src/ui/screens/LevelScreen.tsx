@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { levelById, levels } from '../../game/levels';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
@@ -35,6 +35,7 @@ const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: Wal
 ];
 
 export function LevelScreen(): JSX.Element {
+  const eventLogAnchorRef = useRef<HTMLDivElement | null>(null);
   const phase = useGameStore((state) => state.phase);
   const currentLevelId = useGameStore((state) => state.currentLevelId);
   const replayResult = useGameStore((state) => state.replayResult);
@@ -101,9 +102,30 @@ export function LevelScreen(): JSX.Element {
   const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
   const walkthroughStepData =
     walkthroughActive && level.id === 'level1' ? levelOneWalkthroughSteps[walkthroughStep] : null;
+  const walkthroughPosition =
+    walkthroughStepData?.target === 'map'
+      ? 'map'
+      : walkthroughStepData?.target === 'terminalInput'
+        ? 'terminal'
+        : walkthroughStepData?.target === 'compileButton'
+          ? 'compile'
+          : 'eventLog';
 
   const levelIndex = levels.findIndex((entry) => entry.id === level.id);
   const nextLevel = levelIndex >= 0 ? levels[levelIndex + 1] : undefined;
+
+  useEffect(() => {
+    if (!walkthroughStepData || walkthroughStepData.target !== 'eventLog') {
+      return;
+    }
+    const node = eventLogAnchorRef.current;
+    if (!node) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [walkthroughStepData]);
 
   return (
     <div className="level-screen">
@@ -164,7 +186,9 @@ export function LevelScreen(): JSX.Element {
             </div>
           ) : null}
 
-          <EventLogPanel events={visibleEvents} highlighted={walkthroughStepData?.target === 'eventLog'} />
+          <div ref={eventLogAnchorRef}>
+            <EventLogPanel events={visibleEvents} highlighted={walkthroughStepData?.target === 'eventLog'} />
+          </div>
         </div>
 
         <div className="right-top-pane">
@@ -200,6 +224,7 @@ export function LevelScreen(): JSX.Element {
           onBack={prevWalkthroughStep}
           onNext={nextWalkthroughStep}
           onSkip={dismissWalkthrough}
+          position={walkthroughPosition}
         />
       ) : null}
     </div>

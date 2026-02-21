@@ -16,6 +16,12 @@ export type ScreenPhase =
   | 'levelComplete';
 
 export type ReplaySpeed = 1 | 2 | 4;
+type WalkthroughAction = 'typedCommand' | 'compiled';
+
+interface WalkthroughCompletionState {
+  terminalInput: boolean;
+  compileButton: boolean;
+}
 
 interface GameStore {
   phase: ScreenPhase;
@@ -32,6 +38,7 @@ interface GameStore {
   lastOutcome: 'success' | 'failure' | null;
   walkthroughActive: boolean;
   walkthroughStep: number;
+  walkthroughCompletion: WalkthroughCompletionState;
 
   goToMainMenu: () => void;
   openLevelSelect: () => void;
@@ -50,6 +57,7 @@ interface GameStore {
   nextWalkthroughStep: () => void;
   prevWalkthroughStep: () => void;
   dismissWalkthrough: () => void;
+  markWalkthroughAction: (action: WalkthroughAction) => void;
 }
 
 function countScriptCommands(source: string): number {
@@ -61,6 +69,28 @@ function countScriptCommands(source: string): number {
 
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
 const LAST_WALKTHROUGH_STEP = 3;
+const emptyWalkthroughCompletion: WalkthroughCompletionState = {
+  terminalInput: false,
+  compileButton: false,
+};
+
+function isStepAutoCompleted(step: number, completion: WalkthroughCompletionState): boolean {
+  if (step === 1) {
+    return completion.terminalInput;
+  }
+  if (step === 2) {
+    return completion.compileButton;
+  }
+  return false;
+}
+
+function getNextWalkthroughStep(step: number, completion: WalkthroughCompletionState): number {
+  let next = step + 1;
+  while (next <= LAST_WALKTHROUGH_STEP && isStepAutoCompleted(next, completion)) {
+    next += 1;
+  }
+  return next;
+}
 
 function getInitialScript(_levelId: string): string {
   return '';
@@ -81,6 +111,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   lastOutcome: null,
   walkthroughActive: false,
   walkthroughStep: 0,
+  walkthroughCompletion: emptyWalkthroughCompletion,
 
   goToMainMenu: () => {
     set({
@@ -95,6 +126,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       lastOutcome: null,
       walkthroughActive: false,
       walkthroughStep: 0,
+      walkthroughCompletion: emptyWalkthroughCompletion,
     });
   },
 
@@ -144,6 +176,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       lastOutcome: null,
       walkthroughActive,
       walkthroughStep: 0,
+      walkthroughCompletion: emptyWalkthroughCompletion,
     });
   },
 
@@ -173,6 +206,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       scriptText: source,
       save: nextSave,
     });
+    if (source.trim().length > 0) {
+      get().markWalkthroughAction('typedCommand');
+    }
   },
 
   resetScript: () => {
@@ -207,6 +243,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!level) {
       return false;
     }
+    get().markWalkthroughAction('compiled');
 
     const compiled = compileScript(state.scriptText, level);
     set({ compileErrors: compiled.errors });
@@ -223,6 +260,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!level) {
       return;
     }
+    get().markWalkthroughAction('compiled');
 
     const compiled = compileScript(state.scriptText, level);
     if (compiled.errors.length) {
@@ -307,12 +345,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({
         walkthroughActive: false,
         walkthroughStep: 0,
+        walkthroughCompletion: emptyWalkthroughCompletion,
         save: nextSave,
       });
       return;
     }
 
-    set({ walkthroughStep: state.walkthroughStep + 1 });
+    const nextStep = getNextWalkthroughStep(state.walkthroughStep, state.walkthroughCompletion);
+    if (nextStep > LAST_WALKTHROUGH_STEP) {
+      const nextSave = state.save.seenLevel1Walkthrough
+        ? state.save
+        : { ...state.save, seenLevel1Walkthrough: true };
+      if (!state.save.seenLevel1Walkthrough) {
+        persistSaveData(nextSave);
+      }
+      set({
+        walkthroughActive: false,
+        walkthroughStep: 0,
+        walkthroughCompletion: emptyWalkthroughCompletion,
+        save: nextSave,
+      });
+      return;
+    }
+    set({ walkthroughStep: nextStep });
   },
 
   prevWalkthroughStep: () => {
@@ -320,7 +375,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.walkthroughActive) {
       return;
     }
-    set({ walkthroughStep: Math.max(0, state.walkthroughStep - 1) });
+    let prev = Math.max(0, state.walkthroughStep - 1);
+    while (prev > 0 && isStepAutoCompleted(prev, state.walkthroughCompletion)) {
+      prev -= 1;
+    }
+    set({ walkthroughStep: prev });
   },
 
   dismissWalkthrough: () => {
@@ -334,7 +393,47 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       walkthroughActive: false,
       walkthroughStep: 0,
+      walkthroughCompletion: emptyWalkthroughCompletion,
       save: nextSave,
+    });
+  },
+
+  markWalkthroughAction: (action) => {
+    const state = get();
+    if (!state.walkthroughActive || state.currentLevelId !== 'level1') {
+      return;
+    }
+
+    const nextCompletion: WalkthroughCompletionState = {
+      terminalInput: state.walkthroughCompletion.terminalInput || action === 'typedCommand',
+      compileButton: state.walkthroughCompletion.compileButton || action === 'compiled',
+    };
+
+    let nextStep = state.walkthroughStep;
+    const actionStep = action === 'typedCommand' ? 1 : 2;
+    if (state.walkthroughStep === actionStep && isStepAutoCompleted(actionStep, nextCompletion)) {
+      nextStep = getNextWalkthroughStep(state.walkthroughStep, nextCompletion);
+    }
+
+    if (nextStep > LAST_WALKTHROUGH_STEP) {
+      const nextSave = state.save.seenLevel1Walkthrough
+        ? state.save
+        : { ...state.save, seenLevel1Walkthrough: true };
+      if (!state.save.seenLevel1Walkthrough) {
+        persistSaveData(nextSave);
+      }
+      set({
+        walkthroughActive: false,
+        walkthroughStep: 0,
+        walkthroughCompletion: emptyWalkthroughCompletion,
+        save: nextSave,
+      });
+      return;
+    }
+
+    set({
+      walkthroughCompletion: nextCompletion,
+      walkthroughStep: nextStep,
     });
   },
 

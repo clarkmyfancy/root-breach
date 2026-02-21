@@ -445,7 +445,7 @@ textarea {
 .walkthrough-card {
   position: fixed;
   left: 1rem;
-  bottom: 1rem;
+  top: 1rem;
   width: min(430px, calc(100vw - 2rem));
   background: rgba(5, 13, 30, 0.98);
   border: 1px solid #2c4f80;
@@ -453,6 +453,29 @@ textarea {
   padding: 0.75rem;
   z-index: 30;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.walkthrough-card--map {
+  top: 6.5rem;
+  left: 1rem;
+}
+
+.walkthrough-card--terminal {
+  top: 6.5rem;
+  left: auto;
+  right: clamp(460px, 33vw, 560px);
+}
+
+.walkthrough-card--compile {
+  top: 21rem;
+  left: auto;
+  right: clamp(460px, 33vw, 560px);
+}
+
+.walkthrough-card--eventLog {
+  top: auto;
+  left: 1rem;
+  bottom: calc(260px + 1rem);
 }
 
 .walkthrough-card__step {
@@ -490,5 +513,17 @@ textarea {
 
   .right-bottom-pane {
     grid-template-columns: 1fr;
+  }
+
+  .walkthrough-card,
+  .walkthrough-card--map,
+  .walkthrough-card--terminal,
+  .walkthrough-card--compile,
+  .walkthrough-card--eventLog {
+    left: 1rem;
+    right: 1rem;
+    top: auto;
+    bottom: 1rem;
+    width: auto;
   }
 }

@@ -8,6 +8,7 @@ interface WalkthroughPanelProps {
   onBack: () => void;
   onNext: () => void;
   onSkip: () => void;
+  position: 'map' | 'terminal' | 'compile' | 'eventLog';
 }
 
 export function WalkthroughPanel({
@@ -20,9 +21,10 @@ export function WalkthroughPanel({
   onBack,
   onNext,
   onSkip,
+  position,
 }: WalkthroughPanelProps): JSX.Element {
   return (
-    <aside className="walkthrough-card">
+    <aside className={`walkthrough-card walkthrough-card--${position}`}>
       <div className="walkthrough-card__step">
         Walkthrough {step + 1}/{totalSteps}
       </div>

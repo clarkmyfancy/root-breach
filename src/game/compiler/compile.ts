@@ -40,13 +40,18 @@ export function compileScript(source: string, level: LevelDefinition): CompileRe
   }
 
   const scheduled = scheduleCommands(parsed.commands);
-  const lastTick = scheduled.reduce((max, command) => Math.max(max, command.tick), 0);
   const effectiveTickLimit = Math.min(level.constraints.tickLimit, GLOBAL_TICK_LIMIT);
+  const outOfRange = scheduled.find((command) => command.tick >= effectiveTickLimit);
 
-  if (lastTick > effectiveTickLimit) {
+  if (outOfRange) {
     return {
       commands: [],
-      errors: [{ line: 1, message: `Script schedule exceeds run tick limit (${effectiveTickLimit})` }],
+      errors: [
+        {
+          line: outOfRange.line,
+          message: `Command is scheduled at tick ${outOfRange.tick}, outside run range [0, ${effectiveTickLimit})`,
+        },
+      ],
     };
   }
 

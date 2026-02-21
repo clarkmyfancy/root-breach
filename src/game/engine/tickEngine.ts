@@ -464,11 +464,6 @@ function checkWinLose(ctx: TickContext): boolean {
     return true;
   }
 
-  if (ctx.state.tick >= ctx.tickLimit) {
-    ctx.state.outcome = 'failure';
-    return true;
-  }
-
   return false;
 }
 
@@ -506,9 +501,22 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     nextEventId: 1,
   };
 
+  // Always include tick-0 baseline before any script/device updates.
+  frames.push(buildFrame(ctx.state, [], []));
+
   while (ctx.state.outcome === 'running') {
     ctx.eventsThisTick = [];
     ctx.executedLines = [];
+
+    if (ctx.state.tick >= ctx.tickLimit) {
+      emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.tickLimit });
+      ctx.state.outcome = 'failure';
+
+      const frame = buildFrame(ctx.state, ctx.eventsThisTick, ctx.executedLines);
+      frames.push(frame);
+      events.push(...ctx.eventsThisTick);
+      break;
+    }
 
     applyScheduledScriptActions(ctx);
     updateDeviceTimers(ctx);
@@ -517,20 +525,22 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     updateAlarmBus(ctx, detected);
     updateTurrets(ctx);
     updatePlayerMovement(ctx);
-    if (ctx.state.tick >= ctx.tickLimit) {
+
+    const done = checkWinLose(ctx);
+    ctx.state.tick += 1;
+
+    if (!done && ctx.state.tick >= ctx.tickLimit) {
       emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.tickLimit });
+      ctx.state.outcome = 'failure';
     }
 
     const frame = buildFrame(ctx.state, ctx.eventsThisTick, ctx.executedLines);
     frames.push(frame);
     events.push(...ctx.eventsThisTick);
 
-    const done = checkWinLose(ctx);
-    if (done) {
+    if (ctx.state.outcome !== 'running') {
       break;
     }
-
-    ctx.state.tick += 1;
   }
 
   const outcome = ctx.state.outcome === 'success' ? 'success' : 'failure';

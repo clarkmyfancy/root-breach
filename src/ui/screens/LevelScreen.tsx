@@ -19,7 +19,7 @@ const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: Wal
   },
   {
     title: 'Write Commands In Terminal',
-    body: 'Type commands here to change the level state. For Level 1, start with: door("D1").open()',
+    body: 'Type commands here to change the level state. Start by handling the route blocker in this level.',
     target: 'terminalInput',
   },
   {

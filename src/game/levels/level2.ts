@@ -56,5 +56,4 @@ export const level2: LevelDefinition = {
   constraints: {
     tickLimit: 40,
   },
-  suggestedScript: `alarm().delay(12)`,
 };

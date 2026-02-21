@@ -34,5 +34,4 @@ export const level1: LevelDefinition = {
   constraints: {
     tickLimit: 15,
   },
-  suggestedScript: `door("D1").open()`,
 };

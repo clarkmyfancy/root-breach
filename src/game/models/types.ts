@@ -89,7 +89,6 @@ export interface LevelDefinition {
   devices: Device[];
   networkScope: string[];
   constraints: LevelConstraints;
-  suggestedScript?: string;
 }
 
 export interface PlayerState {

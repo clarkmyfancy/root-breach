@@ -103,5 +103,4 @@ export const level5: LevelDefinition = {
   constraints: {
     tickLimit: 120,
   },
-  suggestedScript: `camera("C5A").disable(8)\ndoor("D5A").open()\nwait(5)\ndoor("D5B").open()\ncamera("C5B").disable(8)`,
 };

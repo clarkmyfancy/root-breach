@@ -68,5 +68,4 @@ export const level3: LevelDefinition = {
   constraints: {
     tickLimit: 70,
   },
-  suggestedScript: `camera("C3").disable(20)`,
 };

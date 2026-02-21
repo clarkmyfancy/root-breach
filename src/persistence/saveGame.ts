@@ -6,7 +6,7 @@ export interface SaveData {
   lastScripts: Record<string, string>;
 }
 
-const STORAGE_KEY = 'breachloop_save_v1';
+const STORAGE_KEY = 'root_breach_save_v1';
 
 export const defaultSaveData: SaveData = {
   unlockedLevelIndex: 0,

@@ -6,8 +6,8 @@ export function MainMenu(): JSX.Element {
   return (
     <div className="main-menu">
       <div className="main-menu__card">
-        <h1>BreachLoop</h1>
-        <p>Die, inspect, patch script, replay from tick 0.</p>
+        <h1>Root Breach</h1>
+        <p>Hack your way through the system. Fail, adapt, replay.</p>
         <button className="btn btn-primary" onClick={openLevelSelect}>
           Start Operation
         </button>

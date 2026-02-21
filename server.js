@@ -82,5 +82,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`BreachLoop server listening on port ${PORT}`);
+  console.log(`Root Breach server listening on port ${PORT}`);
 });

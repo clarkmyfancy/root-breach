@@ -1,4 +1,4 @@
-# BreachLoop MVP
+# Root Breach MVP
 
 A deterministic, tick-based browser puzzle game prototype built with React + TypeScript + Vite + Zustand.
 

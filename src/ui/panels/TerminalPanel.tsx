@@ -13,6 +13,13 @@ interface TerminalPanelProps {
 }
 
 const apiReference = [
+  'scan.node("N1")',
+  'scan.device("CAM_2")',
+  'scan.route()',
+  'probe.logs("AUTH")',
+  'access.door("D1").bypass()',
+  'access.terminal("TERM1").spoof("maint")',
+  'access.auth("AUTH_1").replayToken("tokenA")',
   'camera("CAM_ID").disable()',
   'camera("CAM_ID").disable(20)',
   'camera("CAM_ID").enable()',
@@ -20,8 +27,19 @@ const apiReference = [
   'door("DOOR_ID").open()',
   'door("DOOR_ID").close()',
   'turret("TURRET_ID").retarget("TARGET_ID")',
+  'file("VAULT_DOC").copy()',
+  'file("AUDIT_LOG").delete()',
+  'record("EMP_042").alter("status","terminated")',
+  'device("PUMP_3").sabotage("overpressure")',
   'device("DEVICE_ID").tag("friendly")',
   'trace().spoof("MAINT_ROUTE")',
+  'route().relay("NODE_A")',
+  'route.agent("north_corridor")',
+  'decoy().burst(3)',
+  'logs("AUTH").scrub("AUTH_1")',
+  'logs("NETFLOW").forge("competitor_sig")',
+  'logs("DEVICE").overwrite("CAM_2")',
+  'evidence().frame("SCAPEGOAT_ID")',
   'wait(5)',
   'log("message")',
 ];

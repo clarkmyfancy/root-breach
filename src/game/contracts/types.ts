@@ -20,6 +20,7 @@ export interface MissionRules {
   allowFrameTarget?: boolean;
   forcedDetection?: boolean;
   targetFrameIdentity?: string;
+  cleanupWindowTicks?: number;
 }
 
 export interface ContractDefinition {
@@ -39,6 +40,11 @@ export interface ContractDefinition {
   requiredTools?: string[];
   optionalBonuses?: ContractBonus[];
   missionRules: MissionRules;
+  siteNodes: string[];
+  fileTargets: string[];
+  recordTargets: string[];
+  authEndpoints: string[];
+  frameTargets: string[];
   storyIntro: string[];
   storyTags?: string[];
 }

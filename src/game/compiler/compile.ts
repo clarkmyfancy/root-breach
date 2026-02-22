@@ -1,12 +1,14 @@
+import type { ContractDefinition } from '../contracts/types';
 import type { LevelDefinition } from '../models/types';
 import { GLOBAL_TICK_LIMIT } from '../engine/constants';
 import { parseScript } from './parser';
 import type { CommandKind, CompiledCommand, CompileResult } from './scriptTypes';
-import { validateParsedScript } from './validator';
+import { validateCleanupPhaseLegality, validateParsedScript } from './validator';
 
 export interface CompileOptions {
   ownedToolIds?: string[];
   requiredToolByCommand?: Partial<Record<CommandKind, string>>;
+  contract?: ContractDefinition;
 }
 
 function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']): CompiledCommand[] {
@@ -22,6 +24,7 @@ function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']):
       deviceId: command.deviceId,
       targetId: command.targetId,
       textArg: command.textArg,
+      extraTextArg: command.extraTextArg,
       value: command.value,
     });
 
@@ -58,6 +61,17 @@ export function compileScript(source: string, level: LevelDefinition, options: C
         },
       ],
     };
+  }
+
+  if (options.contract) {
+    const cleanupStartTickHint = Math.max(1, level.playerPath.length - 1);
+    const phaseErrors = validateCleanupPhaseLegality(scheduled, cleanupStartTickHint);
+    if (phaseErrors.length) {
+      return {
+        commands: [],
+        errors: phaseErrors,
+      };
+    }
   }
 
   return { commands: scheduled, errors: [] };

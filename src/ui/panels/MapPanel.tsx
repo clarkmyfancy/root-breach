@@ -265,6 +265,9 @@ export function MapPanel({
     ctx.font = '12px Menlo, monospace';
     ctx.textAlign = 'left';
     ctx.fillText(`Tick ${tick}`, 8, 16);
+    if (snapshot) {
+      ctx.fillText(`Phase ${snapshot.missionPhase}`, 8, 32);
+    }
   }, [level, snapshot, tick, devices, selectedDeviceId, frameEvents]);
 
   const onClick = (event: MouseEvent<HTMLCanvasElement>) => {

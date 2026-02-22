@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react';
 import { contracts } from '../../game/contracts';
-import { toolCatalog } from '../../game/tools';
+import { factionById } from '../../game/factions';
+import { siteByLevelId } from '../../game/sites';
+import { toolById, toolCatalog } from '../../game/tools';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
+import { ForensicsPanel } from '../panels/ForensicsPanel';
 import { useGameStore, type DesktopApp } from '../../store/useGameStore';
 import { LevelScreen } from './LevelScreen';
 
 const appNav: Array<{ id: DesktopApp; label: string }> = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'contracts', label: 'Contracts' },
+  { id: 'worldMap', label: 'World Map' },
   { id: 'siteMonitor', label: 'Site Monitor' },
   { id: 'forensics', label: 'Forensics' },
   { id: 'blackMarket', label: 'Black Market' },
@@ -21,12 +25,16 @@ function InboxApp(): JSX.Element {
       <div className="panel__title">Inbox</div>
       <div className="inbox-list">
         <article className="inbox-item">
-          <h4>Ops Desk: New Contract Feed Online</h4>
-          <p>Contracts now include payout, heat exposure, and mission rules. Review briefing data before deployment.</p>
+          <h4>Ops Desk: Two-Phase Protocol Active</h4>
+          <p>Complete objective first, then sanitize or redirect evidence before closure windows expire.</p>
         </article>
         <article className="inbox-item">
-          <h4>Procurement: Market Access Enabled</h4>
-          <p>Reputation now gates tooling. Buy upgrades from Black Market to unlock additional command capabilities.</p>
+          <h4>Forensics Team: Attribution Rules Tightened</h4>
+          <p>Failure debrief now considers trace escalation, unsanitized evidence, and frame-target consistency.</p>
+        </article>
+        <article className="inbox-item">
+          <h4>Procurement: Tooling Expansion</h4>
+          <p>Probe, Access, Payload, Mask, and Scrub suites are now available as rep grows.</p>
         </article>
       </div>
     </div>
@@ -44,6 +52,9 @@ function ContractBoardApp(): JSX.Element {
         {contracts.map((contract) => {
           const unlocked = save.campaign.unlockedContracts.includes(contract.id);
           const completed = save.campaign.completedContracts.includes(contract.id);
+          const missingTools = (contract.requiredTools ?? []).filter((toolId) => !save.campaign.ownedTools[toolId]?.owned);
+          const blockedByTools = missingTools.length > 0;
+
           return (
             <article key={contract.id} className={`contract-card ${unlocked ? '' : 'contract-card--locked'}`}>
               <h4>{contract.title}</h4>
@@ -55,7 +66,14 @@ function ContractBoardApp(): JSX.Element {
                 <span>Pay: {contract.payout}cr</span>
                 <span>Rep: +{contract.repReward}</span>
               </div>
-              <button className="btn btn-primary" disabled={!unlocked} onClick={() => startContract(contract.id)}>
+              {missingTools.length > 0 ? (
+                <div className="contract-requirements">Missing tools: {missingTools.map((id) => toolById[id]?.name ?? id).join(', ')}</div>
+              ) : null}
+              <button
+                className="btn btn-primary"
+                disabled={!unlocked || blockedByTools}
+                onClick={() => startContract(contract.id)}
+              >
                 {completed ? 'Replay Contract' : unlocked ? 'Accept Contract' : 'Locked'}
               </button>
             </article>
@@ -66,20 +84,55 @@ function ContractBoardApp(): JSX.Element {
   );
 }
 
+function WorldMapApp(): JSX.Element {
+  const grouped = useMemo(() => {
+    const map: Record<string, typeof contracts> = {};
+    for (const contract of contracts) {
+      if (!map[contract.regionId]) {
+        map[contract.regionId] = [];
+      }
+      map[contract.regionId].push(contract);
+    }
+    return map;
+  }, []);
+
+  return (
+    <div className="panel desktop-app">
+      <div className="panel__title">Network Map</div>
+      <div className="world-grid">
+        {Object.entries(grouped).map(([regionId, regionContracts]) => (
+          <article className="world-region" key={regionId}>
+            <h4>{regionId}</h4>
+            {regionContracts.map((contract) => (
+              <div key={contract.id} className="world-route">
+                <span>{contract.title}</span>
+                <span className="muted">{factionById[contract.factionId]?.name ?? contract.factionId}</span>
+              </div>
+            ))}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ForensicsApp(): JSX.Element {
   const replayResult = useGameStore((state) => state.replayResult);
   const frameIndex = useGameStore((state) => state.frameIndex);
   const failureSummary = useGameStore((state) => state.failureSummary);
+  const currentFrame = replayResult
+    ? replayResult.frames[Math.min(frameIndex, Math.max(0, replayResult.frames.length - 1))]
+    : undefined;
   const events = useMemo(() => {
-    if (!replayResult) {
+    if (!replayResult || !currentFrame) {
       return [];
     }
-    const maxTick = replayResult.frames[Math.min(frameIndex, replayResult.frames.length - 1)]?.tick ?? 0;
-    return replayResult.events.filter((event) => event.tick <= maxTick);
-  }, [replayResult, frameIndex]);
+    return replayResult.events.filter((event) => event.tick <= currentFrame.tick);
+  }, [replayResult, currentFrame]);
 
   return (
-    <div className="desktop-split">
+    <div className="desktop-forensics">
+      <ForensicsPanel evidence={currentFrame?.snapshot.evidence ?? []} />
       <EventLogPanel events={events} />
       <FailureSummaryPanel summary={failureSummary} />
     </div>
@@ -114,6 +167,7 @@ function BlackMarketApp(): JSX.Element {
                   <span>{tool.cost}cr</span>
                   <span>Rep {tool.repRequired}</span>
                 </div>
+                <div className="market-unlocks">Unlocks: {tool.unlocksCommands.join(', ')}</div>
                 <button
                   className="btn btn-primary"
                   disabled={disabled}
@@ -151,7 +205,7 @@ function ProfileApp(): JSX.Element {
       {ownedTools.length ? (
         <ul className="owned-tool-list">
           {ownedTools.map((id) => (
-            <li key={id}>{id}</li>
+            <li key={id}>{toolById[id]?.name ?? id}</li>
           ))}
         </ul>
       ) : (
@@ -172,6 +226,7 @@ export function DesktopShell(): JSX.Element {
   const openLevelSelect = useGameStore((state) => state.openLevelSelect);
 
   const activeContract = currentContractId ? contracts.find((contract) => contract.id === currentContractId) : null;
+  const activeSite = activeContract ? siteByLevelId[activeContract.siteId] : null;
 
   return (
     <div className="desktop-shell">
@@ -197,6 +252,9 @@ export function DesktopShell(): JSX.Element {
           </div>
           <div>
             <strong>Active Contract:</strong> {activeContract?.title ?? 'None'}
+          </div>
+          <div>
+            <strong>Site:</strong> {activeSite?.id ?? '-'}
           </div>
         </header>
 
@@ -249,6 +307,7 @@ export function DesktopShell(): JSX.Element {
         <section className="desktop-content">
           {activeDesktopApp === 'inbox' ? <InboxApp /> : null}
           {activeDesktopApp === 'contracts' ? <ContractBoardApp /> : null}
+          {activeDesktopApp === 'worldMap' ? <WorldMapApp /> : null}
           {activeDesktopApp === 'siteMonitor' ? <LevelScreen /> : null}
           {activeDesktopApp === 'forensics' ? <ForensicsApp /> : null}
           {activeDesktopApp === 'blackMarket' ? <BlackMarketApp /> : null}

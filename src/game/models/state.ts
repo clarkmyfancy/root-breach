@@ -37,5 +37,31 @@ export function createInitialSimulationState(level: LevelDefinition): Simulation
     player: createInitialPlayer(level),
     devices: levelDevicesToMap(level),
     outcome: 'running',
+    mission: {
+      phase: 'OBJECTIVE',
+      objectiveCompleted: false,
+      cleanupCompleted: false,
+      cleanupRequired: false,
+      cleanupDeadlineTick: null,
+      trace: {
+        progress: 0,
+        ratePerTick: 0,
+        sources: [],
+        lockedOn: false,
+        thresholdEventsFired: [],
+        decoyBuffer: 0,
+        relays: [],
+      },
+      evidence: [],
+      attributionTarget: null,
+      detectedAtLeastOnce: false,
+      objectiveFlags: {
+        fileCopied: false,
+        fileDeleted: false,
+        recordAltered: false,
+        sabotageDone: false,
+        frameSet: false,
+      },
+    },
   };
 }

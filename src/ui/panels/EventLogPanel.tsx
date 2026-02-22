@@ -29,6 +29,62 @@ function formatEvent(event: EventRecord): string {
       return `${event.payload.deviceId} tagged ${event.payload.tag}`;
     case 'TRACE_SPOOFED':
       return `Trace signature spoofed: ${event.payload.label}`;
+    case 'NODE_SCANNED':
+      return `Node scan ${event.payload.nodeId}`;
+    case 'DEVICE_SCANNED':
+      return `Device scan ${event.payload.deviceId}`;
+    case 'ROUTE_SCANNED':
+      return 'Route topology scanned';
+    case 'LOG_SURFACE_PROBED':
+      return `Log surface probe ${event.payload.surface}`;
+    case 'ACCESS_BYPASS_APPLIED':
+      return `Door bypass ${event.payload.doorId}`;
+    case 'ACCESS_SPOOF_APPLIED':
+      return `Terminal spoof ${event.payload.terminalId} as ${event.payload.identity}`;
+    case 'ACCESS_TOKEN_REPLAYED':
+      return `Replay token on ${event.payload.authId}`;
+    case 'FILE_COPIED':
+      return `File copied ${event.payload.fileId}`;
+    case 'FILE_DELETED':
+      return `File deleted ${event.payload.fileId}`;
+    case 'RECORD_ALTERED':
+      return `Record altered ${event.payload.recordId}`;
+    case 'DEVICE_SABOTAGED':
+      return `Device sabotaged ${event.payload.deviceId}`;
+    case 'ROUTE_RELAY_APPLIED':
+      return `Relay routed through ${event.payload.nodeId}`;
+    case 'ROUTE_AGENT_SELECTED':
+      return `Agent route selected ${event.payload.route}`;
+    case 'DECOY_BURST_APPLIED':
+      return `Decoy burst ${event.payload.amount}`;
+    case 'LOGS_SCRUBBED':
+      return `Logs scrubbed ${event.payload.surface} (${event.payload.count})`;
+    case 'LOGS_FORGED':
+      return `Logs forged ${event.payload.surface}`;
+    case 'LOGS_OVERWRITTEN':
+      return `Logs overwritten ${event.payload.surface} (${event.payload.count})`;
+    case 'EVIDENCE_FRAME_SET':
+      return `Frame target set ${event.payload.target}`;
+    case 'EVIDENCE_LOGGED':
+      return `Evidence ${event.payload.surface} at ${event.payload.siteNodeId}`;
+    case 'EVIDENCE_ATTRIBUTION_SHIFTED':
+      return `Attribution shifted to ${event.payload.target}`;
+    case 'TRACE_UPDATED':
+      return `Trace ${event.payload.progress}% (${event.payload.delta}/tick)`;
+    case 'TRACE_THRESHOLD_REACHED':
+      return `Trace threshold ${event.payload.threshold}% reached`;
+    case 'TRACE_MAXED':
+      return 'Trace maxed out';
+    case 'MISSION_PHASE_CHANGED':
+      return `Mission phase ${event.payload.from} -> ${event.payload.to}`;
+    case 'OBJECTIVE_PROGRESS':
+      return `Objective progress ${event.payload.objectiveKey}`;
+    case 'OBJECTIVE_COMPLETED':
+      return 'Objective completed';
+    case 'CLEANUP_COMPLETED':
+      return 'Cleanup completed';
+    case 'CLEANUP_FAILED':
+      return `Cleanup failed (${event.payload.reason})`;
     case 'TURRET_TARGET_LOCK':
       return `Turret ${event.payload.turretId} locked ${event.payload.targetId}`;
     case 'TURRET_FIRED':

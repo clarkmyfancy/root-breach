@@ -6,6 +6,41 @@ const patterns: Array<{
   map: (m: RegExpMatchArray, line: number, raw: string) => ParsedCommand;
 }> = [
   {
+    kind: 'scan.node',
+    regex: /^scan\.node\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'scan.node', targetId: m[1] }),
+  },
+  {
+    kind: 'scan.device',
+    regex: /^scan\.device\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'scan.device', deviceId: m[1] }),
+  },
+  {
+    kind: 'scan.route',
+    regex: /^scan\.route\(\)$/,
+    map: (_m, line, raw) => ({ line, raw, kind: 'scan.route' }),
+  },
+  {
+    kind: 'probe.logs',
+    regex: /^probe\.logs\("([A-Za-z_]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'probe.logs', textArg: m[1] }),
+  },
+  {
+    kind: 'access.door.bypass',
+    regex: /^access\.door\("([A-Za-z0-9_:-]+)"\)\.bypass\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'access.door.bypass', deviceId: m[1] }),
+  },
+  {
+    kind: 'access.terminal.spoof',
+    regex: /^access\.terminal\("([A-Za-z0-9_:-]+)"\)\.spoof\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'access.terminal.spoof', deviceId: m[1], textArg: m[2] }),
+  },
+  {
+    kind: 'access.auth.replayToken',
+    regex: /^access\.auth\("([A-Za-z0-9_:-]+)"\)\.replayToken\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'access.auth.replayToken', deviceId: m[1], textArg: m[2] }),
+  },
+  {
     kind: 'camera.disable',
     regex: /^camera\("([A-Za-z0-9_:-]+)"\)\.disable\((\d+)\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'camera.disable', deviceId: m[1], value: Number(m[2]) }),
@@ -46,9 +81,71 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'device.tag', deviceId: m[1], textArg: m[2] }),
   },
   {
+    kind: 'file.copy',
+    regex: /^file\("([A-Za-z0-9_:-]+)"\)\.copy\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'file.copy', deviceId: m[1] }),
+  },
+  {
+    kind: 'file.delete',
+    regex: /^file\("([A-Za-z0-9_:-]+)"\)\.delete\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'file.delete', deviceId: m[1] }),
+  },
+  {
+    kind: 'record.alter',
+    regex: /^record\("([A-Za-z0-9_:-]+)"\)\.alter\("([A-Za-z0-9_:-]+)","([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({
+      line,
+      raw,
+      kind: 'record.alter',
+      deviceId: m[1],
+      textArg: m[2],
+      extraTextArg: m[3],
+    }),
+  },
+  {
+    kind: 'device.sabotage',
+    regex: /^device\("([A-Za-z0-9_:-]+)"\)\.sabotage\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'device.sabotage', deviceId: m[1], textArg: m[2] }),
+  },
+  {
     kind: 'trace.spoof',
     regex: /^trace\(\)\.spoof\("([A-Za-z0-9_:-]+)"\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'trace.spoof', textArg: m[1] }),
+  },
+  {
+    kind: 'route.relay',
+    regex: /^route\(\)\.relay\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'route.relay', targetId: m[1] }),
+  },
+  {
+    kind: 'route.agent',
+    regex: /^route\.agent\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'route.agent', targetId: m[1] }),
+  },
+  {
+    kind: 'decoy.burst',
+    regex: /^decoy\(\)\.burst\((\d+)\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'decoy.burst', value: Number(m[1]) }),
+  },
+  {
+    kind: 'logs.scrub',
+    regex: /^logs\("([A-Z_]+)"\)\.scrub\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'logs.scrub', textArg: m[1], targetId: m[2] }),
+  },
+  {
+    kind: 'logs.forge',
+    regex: /^logs\("([A-Z_]+)"\)\.forge\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'logs.forge', textArg: m[1], targetId: m[2] }),
+  },
+  {
+    kind: 'logs.overwrite',
+    regex: /^logs\("([A-Z_]+)"\)\.overwrite\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'logs.overwrite', textArg: m[1], targetId: m[2] }),
+  },
+  {
+    kind: 'evidence.frame',
+    regex: /^evidence\(\)\.frame\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'evidence.frame', textArg: m[1] }),
   },
   {
     kind: 'wait',

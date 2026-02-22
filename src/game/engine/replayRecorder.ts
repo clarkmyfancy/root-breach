@@ -16,6 +16,14 @@ export function buildSnapshot(state: SimulationState): SimulationSnapshot {
     player: { ...state.player },
     devices: cloneDeviceMap(state.devices),
     alarmState: getAlarmStateFromDevices(state),
+    missionPhase: state.mission.phase,
+    objectiveCompleted: state.mission.objectiveCompleted,
+    cleanupCompleted: state.mission.cleanupCompleted,
+    traceProgress: state.mission.trace.progress,
+    traceRatePerTick: state.mission.trace.ratePerTick,
+    traceLockedOn: state.mission.trace.lockedOn,
+    traceSources: [...state.mission.trace.sources],
+    evidence: state.mission.evidence.map((record) => ({ ...record })),
   };
 }
 

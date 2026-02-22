@@ -28,6 +28,31 @@ export function FailureSummaryPanel({ summary }: FailureSummaryPanelProps): JSX.
           ))}
         </ul>
       </div>
+      {summary.objectiveStatus ? (
+        <p>
+          <strong>Objective status:</strong> {summary.objectiveStatus}
+        </p>
+      ) : null}
+      {summary.cleanupStatus ? (
+        <p>
+          <strong>Cleanup status:</strong> {summary.cleanupStatus}
+        </p>
+      ) : null}
+      {summary.attributionConclusion ? (
+        <p>
+          <strong>Attribution:</strong> {summary.attributionConclusion}
+        </p>
+      ) : null}
+      {summary.exposureCauses?.length ? (
+        <div>
+          <strong>Exposure causes:</strong>
+          <ul>
+            {summary.exposureCauses.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

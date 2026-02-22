@@ -23,6 +23,32 @@ function findBefore(events: EventRecord[], type: EventRecord['type'], tick: numb
 }
 
 export function buildFailureSummary(events: EventRecord[]): FailureSummary {
+  const traceMaxed = findLast(events, 'TRACE_MAXED');
+  if (traceMaxed) {
+    return {
+      primaryCause: 'Trace reached 100 and origin attribution locked in',
+      causeChain: [`Trace threshold reached at tick ${traceMaxed.tick}`],
+      suggestedFocus: 'Reduce noisy actions, add relay/decoy tooling, and scrub evidence during cleanup',
+      objectiveStatus: findLast(events, 'OBJECTIVE_COMPLETED') ? 'complete' : 'incomplete',
+      cleanupStatus: findLast(events, 'CLEANUP_COMPLETED') ? 'complete' : 'failed',
+      exposureCauses: ['Mission trace overflow'],
+      attributionConclusion: String(traceMaxed.payload.attributedTo ?? 'OPERATOR'),
+    };
+  }
+
+  const cleanupFailed = findLast(events, 'CLEANUP_FAILED');
+  if (cleanupFailed) {
+    return {
+      primaryCause: 'Cleanup phase failed before mission closure',
+      causeChain: [`Cleanup condition unmet: ${String(cleanupFailed.payload.reason ?? 'unknown')}`],
+      suggestedFocus: 'Use scrub/forge commands and reduce operator-attributed evidence before timeout',
+      objectiveStatus: 'complete',
+      cleanupStatus: 'failed',
+      exposureCauses: [String(cleanupFailed.payload.reason ?? 'unspecified')],
+      attributionConclusion: String(cleanupFailed.payload.attributedTo ?? 'OPERATOR'),
+    };
+  }
+
   const killed = findLast(events, 'PLAYER_KILLED');
   if (killed) {
     const turretId = String(killed.payload.turretId ?? 'unknown turret');
@@ -70,15 +96,17 @@ export function buildFailureSummary(events: EventRecord[]): FailureSummary {
   const timeout = findLast(events, 'RUN_TIMEOUT');
   if (timeout) {
     return {
-      primaryCause: 'Run timed out before reaching exit',
-      causeChain: ['No successful path completion before tick limit'],
-      suggestedFocus: 'Reduce waits and unblock doors earlier',
+      primaryCause: 'Run timed out before mission completion',
+      causeChain: ['No successful objective/cleanup completion before tick limit'],
+      suggestedFocus: 'Reduce waits and complete objective plus cleanup steps earlier',
+      objectiveStatus: findLast(events, 'OBJECTIVE_COMPLETED') ? 'complete' : 'incomplete',
+      cleanupStatus: findLast(events, 'CLEANUP_COMPLETED') ? 'complete' : 'pending',
     };
   }
 
   return {
     primaryCause: 'Run failed',
-    causeChain: ['Simulation ended without reaching exit'],
-    suggestedFocus: 'Inspect event log and adjust script timing',
+    causeChain: ['Simulation ended without satisfying mission requirements'],
+    suggestedFocus: 'Inspect event log and forensics panel to adjust script timing and cleanup',
   };
 }

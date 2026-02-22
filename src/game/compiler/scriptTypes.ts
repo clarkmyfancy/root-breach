@@ -1,4 +1,11 @@
 export type CommandKind =
+  | 'scan.node'
+  | 'scan.device'
+  | 'scan.route'
+  | 'probe.logs'
+  | 'access.door.bypass'
+  | 'access.terminal.spoof'
+  | 'access.auth.replayToken'
   | 'camera.disable'
   | 'camera.enable'
   | 'alarm.delay'
@@ -6,7 +13,18 @@ export type CommandKind =
   | 'door.close'
   | 'turret.retarget'
   | 'device.tag'
+  | 'file.copy'
+  | 'file.delete'
+  | 'record.alter'
+  | 'device.sabotage'
   | 'trace.spoof'
+  | 'route.relay'
+  | 'route.agent'
+  | 'decoy.burst'
+  | 'logs.scrub'
+  | 'logs.forge'
+  | 'logs.overwrite'
+  | 'evidence.frame'
   | 'wait'
   | 'log';
 
@@ -17,6 +35,7 @@ export interface ParsedCommand {
   deviceId?: string;
   targetId?: string;
   textArg?: string;
+  extraTextArg?: string;
   value?: number;
 }
 
@@ -33,6 +52,7 @@ export interface CompiledCommand {
   deviceId?: string;
   targetId?: string;
   textArg?: string;
+  extraTextArg?: string;
   value?: number;
 }
 

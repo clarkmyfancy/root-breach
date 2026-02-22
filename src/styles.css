@@ -617,9 +617,19 @@ textarea {
   font-size: 0.85rem;
 }
 
+.contract-requirements {
+  font-size: 0.82rem;
+  color: #fbbf24;
+}
+
 .market-message {
   margin-bottom: 0.55rem;
   color: #8ff2bd;
+}
+
+.market-unlocks {
+  font-size: 0.8rem;
+  color: #a7c2e6;
 }
 
 .profile-grid {
@@ -637,6 +647,38 @@ textarea {
   display: grid;
   grid-template-columns: 1fr 360px;
   gap: 0.7rem;
+}
+
+.desktop-forensics {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 360px;
+  gap: 0.7rem;
+}
+
+.world-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.6rem;
+}
+
+.world-region {
+  background: #0b152b;
+  border: 1px solid #27406f;
+  border-radius: 0.6rem;
+  padding: 0.65rem;
+}
+
+.world-region h4 {
+  margin: 0 0 0.45rem;
+}
+
+.world-route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border-top: 1px solid rgba(70, 98, 146, 0.45);
+  padding-top: 0.35rem;
+  margin-top: 0.35rem;
 }
 
 .debrief-banner {
@@ -679,6 +721,85 @@ textarea {
   gap: 0.5rem;
 }
 
+.panel-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.trace-meter {
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #081124;
+  border: 1px solid #24446d;
+}
+
+.trace-meter__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #eab308, #ef4444);
+}
+
+.trace-meta {
+  display: flex;
+  gap: 0.7rem;
+  font-size: 0.82rem;
+  color: #c8ddff;
+}
+
+.trace-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.78rem;
+  color: #a7c2e6;
+}
+
+.panel-forensics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.forensics-filters {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.forensics-filters select {
+  background: #09152b;
+  color: #dbeafe;
+  border: 1px solid #2b4a77;
+  border-radius: 0.4rem;
+  padding: 0.25rem 0.35rem;
+}
+
+.forensics-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.forensics-table {
+  max-height: 360px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: #c8dcff;
+}
+
+.forensics-row {
+  display: grid;
+  grid-template-columns: 56px 80px 100px 60px 1fr 120px 80px;
+  gap: 0.4rem;
+  border-bottom: 1px solid rgba(48, 73, 114, 0.4);
+  padding-bottom: 0.2rem;
+}
+
 @media (max-width: 1200px) {
   .desktop-shell {
     grid-template-columns: 1fr;
@@ -690,6 +811,10 @@ textarea {
   }
 
   .desktop-split {
+    grid-template-columns: 1fr;
+  }
+
+  .desktop-forensics {
     grid-template-columns: 1fr;
   }
 

@@ -7,6 +7,7 @@ import { InspectorPanel } from '../panels/InspectorPanel';
 import { MapPanel } from '../panels/MapPanel';
 import { ReplayControls } from '../panels/ReplayControls';
 import { TerminalPanel } from '../panels/TerminalPanel';
+import { TracePanel } from '../panels/TracePanel';
 import { WalkthroughPanel } from '../panels/WalkthroughPanel';
 import { useGameStore } from '../../store/useGameStore';
 
@@ -162,6 +163,13 @@ export function LevelScreen(): JSX.Element {
             onReset={resetReplay}
             onReplay={runReplay}
             onSetSpeed={setReplaySpeed}
+          />
+
+          <TracePanel
+            progress={currentFrame?.snapshot.traceProgress ?? 0}
+            ratePerTick={currentFrame?.snapshot.traceRatePerTick ?? 0}
+            lockedOn={currentFrame?.snapshot.traceLockedOn ?? false}
+            sources={currentFrame?.snapshot.traceSources ?? []}
           />
 
           <div ref={eventLogAnchorRef}>

@@ -1,6 +1,8 @@
 export type DeviceType = 'camera' | 'turret' | 'drone' | 'door' | 'alarm' | 'terminal';
 export type AlarmState = 'GREEN' | 'YELLOW' | 'RED';
 export type Facing = 'up' | 'down' | 'left' | 'right';
+export type MissionPhase = 'OBJECTIVE' | 'CLEANUP' | 'COMPLETE' | 'FAILED';
+export type EvidenceSurface = 'NETFLOW' | 'AUTH' | 'DEVICE' | 'FILE_AUDIT' | 'ALARM' | 'PROCESS';
 
 export interface Point {
   x: number;
@@ -105,4 +107,55 @@ export interface SimulationState {
   player: PlayerState;
   devices: Record<string, Device>;
   outcome: 'running' | 'success' | 'failure';
+  mission: MissionState;
+}
+
+export interface TraceSource {
+  id: string;
+  label: string;
+  delta: number;
+}
+
+export interface TraceState {
+  progress: number;
+  ratePerTick: number;
+  sources: TraceSource[];
+  lockedOn: boolean;
+  thresholdEventsFired: number[];
+  decoyBuffer: number;
+  relays: string[];
+}
+
+export interface EvidenceRecord {
+  id: string;
+  tick: number;
+  surface: EvidenceSurface;
+  siteNodeId: string;
+  severity: 1 | 2 | 3;
+  signature: string;
+  attributedTo?: string;
+  hidden?: boolean;
+  scrubbed?: boolean;
+  forged?: boolean;
+}
+
+export interface MissionObjectiveFlags {
+  fileCopied: boolean;
+  fileDeleted: boolean;
+  recordAltered: boolean;
+  sabotageDone: boolean;
+  frameSet: boolean;
+}
+
+export interface MissionState {
+  phase: MissionPhase;
+  objectiveCompleted: boolean;
+  cleanupCompleted: boolean;
+  cleanupRequired: boolean;
+  cleanupDeadlineTick: number | null;
+  trace: TraceState;
+  evidence: EvidenceRecord[];
+  attributionTarget: string | null;
+  detectedAtLeastOnce: boolean;
+  objectiveFlags: MissionObjectiveFlags;
 }

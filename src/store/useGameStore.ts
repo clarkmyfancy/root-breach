@@ -22,7 +22,7 @@ import {
 
 export type ScreenPhase = 'desktop' | 'contractIntro' | 'runObserve' | 'hack' | 'replay' | 'debrief';
 export type ReplaySpeed = 1 | 2 | 4;
-export type DesktopApp = 'inbox' | 'contracts' | 'siteMonitor' | 'forensics' | 'blackMarket' | 'profile';
+export type DesktopApp = 'inbox' | 'contracts' | 'worldMap' | 'siteMonitor' | 'forensics' | 'blackMarket' | 'profile';
 
 export interface DebriefState {
   contractId: string;
@@ -114,13 +114,14 @@ function resolveWalkthroughOutcome(save: SaveData, walkthrough: WalkthroughSlice
   };
 }
 
-function getCompileOptions(save: SaveData) {
+function getCompileOptions(save: SaveData, contract?: ContractDefinition) {
   const ownedToolIds = Object.entries(save.campaign.ownedTools)
     .filter(([, ownedState]) => ownedState.owned)
     .map(([toolId]) => toolId);
   return {
     ownedToolIds,
     requiredToolByCommand: commandToolRequirements,
+    contract,
   };
 }
 
@@ -197,6 +198,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!state.save.campaign.unlockedContracts.includes(contractId)) {
       return;
     }
+    const missingRequiredTools = (contract.requiredTools ?? []).filter((toolId) => !state.save.campaign.ownedTools[toolId]?.owned);
+    if (missingRequiredTools.length > 0) {
+      return;
+    }
 
     const script = getInitialScript(state.save, contract.id);
     set({
@@ -232,13 +237,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     const script = getInitialScript(state.save, contract.id);
-    const compileOptions = getCompileOptions(state.save);
+    const compileOptions = getCompileOptions(state.save, contract);
     const observeCompiled = compileScript(script, level, compileOptions);
     const commands = observeCompiled.errors.length ? [] : observeCompiled.commands;
     const saveAfter = withAttemptAndScript(state.save, contract.id, script);
     persistSaveData(saveAfter);
 
-    const result = runSimulation(level, commands);
+    const result = runSimulation(level, commands, { contract, globalHeat: state.save.campaign.globalHeat });
     const walkthrough = createWalkthroughForLevel(contract.siteId, Boolean(state.save.completedTutorialFlags.level1_walkthrough_seen));
 
     set({
@@ -324,7 +329,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     get().markWalkthroughAction('compiled');
-    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save));
+    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save, contract));
     set({ compileErrors: compiled.errors });
     return compiled.errors.length === 0;
   },
@@ -341,7 +346,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
     get().markWalkthroughAction('compiled');
 
-    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save));
+    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save, contract));
     if (compiled.errors.length) {
       set({
         compileErrors: compiled.errors,
@@ -353,7 +358,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const nextSave = withAttemptAndScript(state.save, contract.id, state.scriptText);
     persistSaveData(nextSave);
 
-    const result = runSimulation(level, compiled.commands);
+    const result = runSimulation(level, compiled.commands, {
+      contract,
+      globalHeat: state.save.campaign.globalHeat,
+    });
 
     set({
       phase: 'replay',

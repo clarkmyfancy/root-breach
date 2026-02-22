@@ -1,16 +1,14 @@
 import { create } from 'zustand';
 import { compileScript } from '../game/compiler/compile';
 import type { CompileError } from '../game/compiler/scriptTypes';
+import { contractById, contractIdBySiteId, contracts } from '../game/contracts';
+import type { ContractDefinition } from '../game/contracts/types';
 import { runSimulation } from '../game/engine/simulationRunner';
 import type { FailureSummary, SimulationResult } from '../game/engine/eventTypes';
-import { levelById, levels } from '../game/levels';
+import { levelById } from '../game/levels';
+import { commandToolRequirements, toolById } from '../game/tools';
 import { defaultSaveData, loadSaveData, persistSaveData, type SaveData } from '../persistence/saveGame';
-import {
-  withAttemptAndScript,
-  withLevelCompletion,
-  withScript,
-  withSeenLevel1Walkthrough,
-} from './progression';
+import { withAttemptAndScript, withContractOutcome, withScript, withSeenLevel1Walkthrough } from './progression';
 import {
   applyWalkthroughAction,
   advanceWalkthrough,
@@ -22,19 +20,24 @@ import {
   type WalkthroughSlice,
 } from './walkthrough';
 
-export type ScreenPhase =
-  | 'mainMenu'
-  | 'levelSelect'
-  | 'runObserve'
-  | 'hack'
-  | 'replay'
-  | 'failSummary'
-  | 'levelComplete';
-
+export type ScreenPhase = 'desktop' | 'contractIntro' | 'runObserve' | 'hack' | 'replay' | 'debrief';
 export type ReplaySpeed = 1 | 2 | 4;
+export type DesktopApp = 'inbox' | 'contracts' | 'siteMonitor' | 'forensics' | 'blackMarket' | 'profile';
+
+export interface DebriefState {
+  contractId: string;
+  contractTitle: string;
+  clientCodename: string;
+  outcome: 'success' | 'failure';
+  payoutDelta: number;
+  repDelta: number;
+  heatDelta: number;
+}
 
 interface GameStore {
   phase: ScreenPhase;
+  activeDesktopApp: DesktopApp;
+  currentContractId: string | null;
   currentLevelId: string | null;
   scriptText: string;
   compileErrors: CompileError[];
@@ -46,6 +49,7 @@ interface GameStore {
   failureSummary: FailureSummary | null;
   save: SaveData;
   lastOutcome: 'success' | 'failure' | null;
+  debrief: DebriefState | null;
   walkthroughActive: boolean;
   walkthroughStep: number;
   walkthroughCompletion: WalkthroughCompletionState;
@@ -53,6 +57,9 @@ interface GameStore {
   goToMainMenu: () => void;
   openLevelSelect: () => void;
   startLevel: (levelId: string) => void;
+  setActiveDesktopApp: (app: DesktopApp) => void;
+  startContract: (contractId: string) => void;
+  launchContractOperation: () => void;
   openHack: () => void;
   updateScript: (source: string) => void;
   resetScript: () => void;
@@ -64,6 +71,8 @@ interface GameStore {
   clearReplay: () => void;
   advanceReplay: () => void;
   selectDevice: (deviceId: string | null) => void;
+  acknowledgeDebrief: () => void;
+  purchaseTool: (toolId: string) => { ok: boolean; message: string };
   nextWalkthroughStep: () => void;
   prevWalkthroughStep: () => void;
   dismissWalkthrough: () => void;
@@ -72,8 +81,8 @@ interface GameStore {
 
 const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
 
-function getInitialScript(_levelId: string): string {
-  return '';
+function getInitialScript(save: SaveData, contractId: string): string {
+  return save.scriptsByContract[contractId] ?? '';
 }
 
 function walkthroughFromState(state: GameStore): WalkthroughSlice {
@@ -105,8 +114,27 @@ function resolveWalkthroughOutcome(save: SaveData, walkthrough: WalkthroughSlice
   };
 }
 
+function getCompileOptions(save: SaveData) {
+  const ownedToolIds = Object.entries(save.campaign.ownedTools)
+    .filter(([, ownedState]) => ownedState.owned)
+    .map(([toolId]) => toolId);
+  return {
+    ownedToolIds,
+    requiredToolByCommand: commandToolRequirements,
+  };
+}
+
+function getActiveContract(state: GameStore): ContractDefinition | null {
+  if (!state.currentContractId) {
+    return null;
+  }
+  return contractById[state.currentContractId] ?? null;
+}
+
 export const useGameStore = create<GameStore>((set, get) => ({
-  phase: 'mainMenu',
+  phase: 'desktop',
+  activeDesktopApp: 'inbox',
+  currentContractId: null,
   currentLevelId: null,
   scriptText: '',
   compileErrors: [],
@@ -118,45 +146,106 @@ export const useGameStore = create<GameStore>((set, get) => ({
   failureSummary: null,
   save: initialSave,
   lastOutcome: null,
+  debrief: null,
   ...defaultWalkthroughSlice,
 
   goToMainMenu: () => {
     set({
-      phase: 'mainMenu',
+      phase: 'desktop',
+      activeDesktopApp: 'inbox',
       replayPlaying: false,
       replayResult: null,
       frameIndex: 0,
       failureSummary: null,
       currentLevelId: null,
+      currentContractId: null,
       selectedDeviceId: null,
       compileErrors: [],
       lastOutcome: null,
+      debrief: null,
       ...defaultWalkthroughSlice,
     });
   },
 
   openLevelSelect: () => {
-    set({ phase: 'levelSelect' });
+    set({ activeDesktopApp: 'contracts', phase: 'desktop' });
   },
 
   startLevel: (levelId: string) => {
-    const level = levelById[levelId];
+    const contractId = contractIdBySiteId[levelId];
+    if (!contractId) {
+      return;
+    }
+    get().startContract(contractId);
+  },
+
+  setActiveDesktopApp: (app) => {
+    set({ activeDesktopApp: app });
+  },
+
+  startContract: (contractId: string) => {
+    const contract = contractById[contractId];
+    if (!contract) {
+      return;
+    }
+    const level = levelById[contract.siteId];
     if (!level) {
       return;
     }
 
-    const saveBefore = get().save;
-    const script = getInitialScript(levelId);
-    const observeCompiled = compileScript(script, level);
+    const state = get();
+    if (!state.save.campaign.unlockedContracts.includes(contractId)) {
+      return;
+    }
+
+    const script = getInitialScript(state.save, contract.id);
+    set({
+      phase: 'contractIntro',
+      activeDesktopApp: 'contracts',
+      currentContractId: contract.id,
+      currentLevelId: contract.siteId,
+      scriptText: script,
+      compileErrors: [],
+      replayResult: null,
+      frameIndex: 0,
+      replayPlaying: false,
+      failureSummary: null,
+      selectedDeviceId: null,
+      lastOutcome: null,
+      debrief: null,
+      ...defaultWalkthroughSlice,
+    });
+  },
+
+  launchContractOperation: () => {
+    const state = get();
+    const contract = getActiveContract(state);
+    if (!contract) {
+      return;
+    }
+    const level = levelById[contract.siteId];
+    if (!level) {
+      return;
+    }
+    if (!state.save.campaign.unlockedContracts.includes(contract.id)) {
+      return;
+    }
+
+    const script = getInitialScript(state.save, contract.id);
+    const compileOptions = getCompileOptions(state.save);
+    const observeCompiled = compileScript(script, level, compileOptions);
     const commands = observeCompiled.errors.length ? [] : observeCompiled.commands;
-    const saveAfter = withAttemptAndScript(saveBefore, levelId, script);
+    const saveAfter = withAttemptAndScript(state.save, contract.id, script);
     persistSaveData(saveAfter);
 
     const result = runSimulation(level, commands);
-    const walkthrough = createWalkthroughForLevel(levelId, saveBefore.seenLevel1Walkthrough);
+    const walkthrough = createWalkthroughForLevel(contract.siteId, Boolean(state.save.completedTutorialFlags.level1_walkthrough_seen));
+
     set({
       phase: 'runObserve',
-      currentLevelId: levelId,
+      activeDesktopApp: 'siteMonitor',
+      currentContractId: contract.id,
+      currentLevelId: contract.siteId,
       scriptText: script,
       compileErrors: observeCompiled.errors,
       replayResult: result,
@@ -167,6 +256,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       failureSummary: result.failureSummary ?? null,
       save: saveAfter,
       lastOutcome: null,
+      debrief: null,
       ...walkthrough,
     });
   },
@@ -174,17 +264,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
   openHack: () => {
     set({
       phase: 'hack',
+      activeDesktopApp: 'siteMonitor',
       replayPlaying: false,
     });
   },
 
   updateScript: (source: string) => {
     const state = get();
-    if (!state.currentLevelId) {
+    const contract = getActiveContract(state);
+    if (!contract) {
       return;
     }
 
-    const baseSave = withScript(state.save, state.currentLevelId, source);
+    const baseSave = withScript(state.save, contract.id, source);
     let finalSave = baseSave;
     let walkthrough = walkthroughFromState(state);
 
@@ -204,12 +296,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   resetScript: () => {
     const state = get();
-    if (!state.currentLevelId) {
+    const contract = getActiveContract(state);
+    if (!contract) {
       return;
     }
 
     const fallback = '';
-    const nextSave = withScript(state.save, state.currentLevelId, fallback);
+    const nextSave = withScript(state.save, contract.id, fallback);
     persistSaveData(nextSave);
 
     set({
@@ -221,33 +314,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   compileCurrentScript: () => {
     const state = get();
-    if (!state.currentLevelId) {
+    const contract = getActiveContract(state);
+    if (!contract) {
       return false;
     }
-    const level = levelById[state.currentLevelId];
+    const level = levelById[contract.siteId];
     if (!level) {
       return false;
     }
-    get().markWalkthroughAction('compiled');
 
-    const compiled = compileScript(state.scriptText, level);
+    get().markWalkthroughAction('compiled');
+    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save));
     set({ compileErrors: compiled.errors });
     return compiled.errors.length === 0;
   },
 
   runReplay: () => {
     const state = get();
-    if (!state.currentLevelId) {
+    const contract = getActiveContract(state);
+    if (!contract) {
       return;
     }
-
-    const level = levelById[state.currentLevelId];
+    const level = levelById[contract.siteId];
     if (!level) {
       return;
     }
     get().markWalkthroughAction('compiled');
 
-    const compiled = compileScript(state.scriptText, level);
+    const compiled = compileScript(state.scriptText, level, getCompileOptions(state.save));
     if (compiled.errors.length) {
       set({
         compileErrors: compiled.errors,
@@ -256,13 +350,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    const nextSave = withAttemptAndScript(state.save, state.currentLevelId, state.scriptText);
+    const nextSave = withAttemptAndScript(state.save, contract.id, state.scriptText);
     persistSaveData(nextSave);
 
     const result = runSimulation(level, compiled.commands);
 
     set({
       phase: 'replay',
+      activeDesktopApp: 'siteMonitor',
       compileErrors: [],
       replayResult: result,
       frameIndex: 0,
@@ -272,6 +367,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedDeviceId: null,
       save: nextSave,
       lastOutcome: null,
+      debrief: null,
     });
   },
 
@@ -371,43 +467,81 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    if (!state.currentLevelId) {
+    const contract = getActiveContract(state);
+    if (!contract) {
       set({ frameIndex: nextIndex, replayPlaying: false });
       return;
     }
 
-    const level = levelById[state.currentLevelId];
-    if (!level) {
-      set({ frameIndex: nextIndex, replayPlaying: false });
-      return;
-    }
-
-    if (result.outcome === 'failure') {
-      set({
-        frameIndex: nextIndex,
-        replayPlaying: false,
-        phase: 'failSummary',
-        failureSummary: result.failureSummary ?? null,
-        lastOutcome: 'failure',
-      });
-      return;
-    }
-
-    const nextSave = withLevelCompletion(state.save, levels, state.currentLevelId, state.scriptText);
-
+    const outcome: 'success' | 'failure' = result.outcome === 'success' ? 'success' : 'failure';
+    const nextSave = withContractOutcome(state.save, contracts, contract, outcome, state.scriptText);
     persistSaveData(nextSave);
 
     set({
       frameIndex: nextIndex,
       replayPlaying: false,
-      phase: 'levelComplete',
-      failureSummary: null,
+      phase: 'debrief',
+      activeDesktopApp: 'siteMonitor',
+      failureSummary: result.failureSummary ?? null,
       save: nextSave,
-      lastOutcome: 'success',
+      lastOutcome: outcome,
+      debrief: {
+        contractId: contract.id,
+        contractTitle: contract.title,
+        clientCodename: contract.clientCodename,
+        outcome,
+        payoutDelta: outcome === 'success' ? contract.payout : 0,
+        repDelta: outcome === 'success' ? contract.repReward : 0,
+        heatDelta: outcome === 'success' ? 0 : contract.heatPenaltyOnFail,
+      },
     });
   },
 
   selectDevice: (deviceId) => {
     set({ selectedDeviceId: deviceId });
+  },
+
+  acknowledgeDebrief: () => {
+    set({
+      phase: 'desktop',
+      activeDesktopApp: 'contracts',
+      replayPlaying: false,
+    });
+  },
+
+  purchaseTool: (toolId: string) => {
+    const state = get();
+    const tool = toolById[toolId];
+    if (!tool) {
+      return { ok: false, message: 'Tool not found.' };
+    }
+    if (state.save.campaign.ownedTools[toolId]?.owned) {
+      return { ok: false, message: 'Tool already owned.' };
+    }
+    if (state.save.campaign.reputation < tool.repRequired) {
+      return { ok: false, message: `Requires reputation ${tool.repRequired}.` };
+    }
+    if (state.save.campaign.credits < tool.cost) {
+      return { ok: false, message: 'Insufficient credits.' };
+    }
+
+    const nextSave: SaveData = {
+      ...state.save,
+      campaign: {
+        ...state.save.campaign,
+        credits: state.save.campaign.credits - tool.cost,
+        ownedTools: {
+          ...state.save.campaign.ownedTools,
+          [toolId]: {
+            owned: true,
+            tier: tool.tier,
+          },
+        },
+      },
+    };
+
+    persistSaveData(nextSave);
+    set({ save: nextSave });
+    return { ok: true, message: `${tool.name} purchased.` };
   },
 }));

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { levelById, levels } from '../../game/levels';
+import { contractById } from '../../game/contracts';
+import { levelById } from '../../game/levels';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
 import { InspectorPanel } from '../panels/InspectorPanel';
@@ -37,7 +38,9 @@ const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: Wal
 export function LevelScreen(): JSX.Element {
   const eventLogAnchorRef = useRef<HTMLDivElement | null>(null);
   const phase = useGameStore((state) => state.phase);
+  const currentContractId = useGameStore((state) => state.currentContractId);
   const currentLevelId = useGameStore((state) => state.currentLevelId);
+  const lastOutcome = useGameStore((state) => state.lastOutcome);
   const replayResult = useGameStore((state) => state.replayResult);
   const frameIndex = useGameStore((state) => state.frameIndex);
   const replayPlaying = useGameStore((state) => state.replayPlaying);
@@ -49,9 +52,7 @@ export function LevelScreen(): JSX.Element {
   const walkthroughActive = useGameStore((state) => state.walkthroughActive);
   const walkthroughStep = useGameStore((state) => state.walkthroughStep);
 
-  const goToMainMenu = useGameStore((state) => state.goToMainMenu);
   const openLevelSelect = useGameStore((state) => state.openLevelSelect);
-  const openHack = useGameStore((state) => state.openHack);
   const updateScript = useGameStore((state) => state.updateScript);
   const compileCurrentScript = useGameStore((state) => state.compileCurrentScript);
   const runReplay = useGameStore((state) => state.runReplay);
@@ -59,7 +60,6 @@ export function LevelScreen(): JSX.Element {
   const toggleReplayPlaying = useGameStore((state) => state.toggleReplayPlaying);
   const resetReplay = useGameStore((state) => state.resetReplay);
   const setReplaySpeed = useGameStore((state) => state.setReplaySpeed);
-  const startLevel = useGameStore((state) => state.startLevel);
   const selectDevice = useGameStore((state) => state.selectDevice);
   const nextWalkthroughStep = useGameStore((state) => state.nextWalkthroughStep);
   const prevWalkthroughStep = useGameStore((state) => state.prevWalkthroughStep);
@@ -78,6 +78,7 @@ export function LevelScreen(): JSX.Element {
   }, [replayPlaying, replaySpeed]);
 
   const level = currentLevelId ? levelById[currentLevelId] : null;
+  const contract = currentContractId ? contractById[currentContractId] : null;
   const currentFrame = replayResult?.frames[Math.min(frameIndex, Math.max(0, (replayResult?.frames.length ?? 1) - 1))] ?? null;
   const tick = currentFrame?.tick ?? 0;
 
@@ -111,9 +112,6 @@ export function LevelScreen(): JSX.Element {
           ? 'compile'
           : 'eventLog';
 
-  const levelIndex = levels.findIndex((entry) => entry.id === level.id);
-  const nextLevel = levelIndex >= 0 ? levels[levelIndex + 1] : undefined;
-
   useEffect(() => {
     if (!walkthroughStepData || walkthroughStepData.target !== 'eventLog') {
       return;
@@ -131,16 +129,14 @@ export function LevelScreen(): JSX.Element {
     <div className="level-screen">
       <header className="level-header">
         <div>
-          <h2>{level.name}</h2>
+          <h2>{contract?.title ?? level.name}</h2>
+          {contract ? <div className="muted">Client: {contract.clientCodename}</div> : null}
           <div className="muted">Phase: {phase}</div>
         </div>
 
         <div className="level-header__actions">
           <button className="btn" onClick={openLevelSelect}>
-            Mission Board
-          </button>
-          <button className="btn" onClick={goToMainMenu}>
-            Main Menu
+            Contract Board
           </button>
         </div>
       </header>
@@ -168,25 +164,6 @@ export function LevelScreen(): JSX.Element {
             onSetSpeed={setReplaySpeed}
           />
 
-          {phase === 'levelComplete' ? (
-            <div className="phase-card">
-              <h3>Level Complete</h3>
-              <div className="phase-card__actions">
-                {nextLevel ? (
-                  <button className="btn btn-primary" onClick={() => startLevel(nextLevel.id)}>
-                    Next Level
-                  </button>
-                ) : null}
-                <button className="btn" onClick={openLevelSelect}>
-                  Back to Board
-                </button>
-                <button className="btn" onClick={openHack}>
-                  Keep Tweaking Script
-                </button>
-              </div>
-            </div>
-          ) : null}
-
           <div ref={eventLogAnchorRef}>
             <EventLogPanel events={visibleEvents} highlighted={walkthroughStepData?.target === 'eventLog'} />
           </div>
@@ -205,8 +182,8 @@ export function LevelScreen(): JSX.Element {
           />
         </div>
 
-        <div className={phase === 'failSummary' ? 'right-bottom-pane right-bottom-pane--fail' : 'right-bottom-pane'}>
-          {phase === 'failSummary' ? (
+        <div className={phase === 'debrief' && lastOutcome === 'failure' ? 'right-bottom-pane right-bottom-pane--fail' : 'right-bottom-pane'}>
+          {phase === 'debrief' && lastOutcome === 'failure' ? (
             <FailureSummaryPanel summary={failureSummary} />
           ) : (
             <InspectorPanel device={selectedDevice} />

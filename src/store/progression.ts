@@ -1,4 +1,4 @@
-import type { LevelDefinition } from '../game/models/types';
+import type { ContractDefinition } from '../game/contracts/types';
 import type { SaveData } from '../persistence/saveGame';
 
 function countScriptCommands(source: string): number {
@@ -8,66 +8,109 @@ function countScriptCommands(source: string): number {
     .filter((line) => line.length > 0 && !line.startsWith('//') && !line.startsWith('#')).length;
 }
 
-export function withAttemptAndScript(save: SaveData, levelId: string, script: string): SaveData {
+export function withAttemptAndScript(save: SaveData, contractId: string, script: string): SaveData {
   return {
     ...save,
-    attemptsByLevel: {
-      ...save.attemptsByLevel,
-      [levelId]: (save.attemptsByLevel[levelId] ?? 0) + 1,
+    campaign: {
+      ...save.campaign,
+      attemptsByContract: {
+        ...save.campaign.attemptsByContract,
+        [contractId]: (save.campaign.attemptsByContract[contractId] ?? 0) + 1,
+      },
     },
-    lastScripts: {
-      ...save.lastScripts,
-      [levelId]: script,
+    scriptsByContract: {
+      ...save.scriptsByContract,
+      [contractId]: script,
     },
   };
 }
 
-export function withScript(save: SaveData, levelId: string, script: string): SaveData {
+export function withScript(save: SaveData, contractId: string, script: string): SaveData {
   return {
     ...save,
-    lastScripts: {
-      ...save.lastScripts,
-      [levelId]: script,
+    scriptsByContract: {
+      ...save.scriptsByContract,
+      [contractId]: script,
     },
   };
 }
 
-export function withLevelCompletion(
+export function withContractOutcome(
   save: SaveData,
-  levels: LevelDefinition[],
-  currentLevelId: string,
-  currentScript: string,
+  contracts: ContractDefinition[],
+  contract: ContractDefinition,
+  outcome: 'success' | 'failure',
+  script: string,
 ): SaveData {
-  const levelIndex = levels.findIndex((entry) => entry.id === currentLevelId);
-  const nextUnlockedIndex = Math.max(save.unlockedLevelIndex, Math.min(levels.length - 1, levelIndex + 1));
+  const nextSave: SaveData = {
+    ...save,
+    campaign: {
+      ...save.campaign,
+      contractHistory: [
+        ...save.campaign.contractHistory,
+        {
+          contractId: contract.id,
+          outcome,
+          payoutDelta: outcome === 'success' ? contract.payout : 0,
+          repDelta: outcome === 'success' ? contract.repReward : 0,
+          heatDelta: outcome === 'success' ? 0 : contract.heatPenaltyOnFail,
+          timestamp: Date.now(),
+        },
+      ],
+    },
+  };
 
-  const existingBest = save.bestScripts[currentLevelId];
-  const currentCmdCount = countScriptCommands(currentScript);
-  const bestCmdCount = existingBest ? countScriptCommands(existingBest) : Number.POSITIVE_INFINITY;
-  const shouldUpdateBest = !existingBest || currentCmdCount <= bestCmdCount;
+  if (outcome !== 'success') {
+    return {
+      ...nextSave,
+      campaign: {
+        ...nextSave.campaign,
+        globalHeat: nextSave.campaign.globalHeat + contract.heatPenaltyOnFail,
+      },
+    };
+  }
+
+  const contractIndex = contracts.findIndex((entry) => entry.id === contract.id);
+  const nextUnlockId = contractIndex >= 0 ? contracts[contractIndex + 1]?.id : undefined;
+  const unlockedContracts = nextUnlockId
+    ? Array.from(new Set([...nextSave.campaign.unlockedContracts, nextUnlockId]))
+    : nextSave.campaign.unlockedContracts;
+  const completedContracts = Array.from(new Set([...nextSave.campaign.completedContracts, contract.id]));
+
+  const currentCommandCount = countScriptCommands(script);
+  const previousBest = nextSave.bestScriptsByContract[contract.id];
+  const shouldReplaceBest = !previousBest || currentCommandCount <= previousBest.commandCount;
 
   return {
-    ...save,
-    unlockedLevelIndex: nextUnlockedIndex,
-    completedLevels: {
-      ...save.completedLevels,
-      [currentLevelId]: true,
+    ...nextSave,
+    campaign: {
+      ...nextSave.campaign,
+      credits: nextSave.campaign.credits + contract.payout,
+      reputation: nextSave.campaign.reputation + contract.repReward,
+      unlockedContracts,
+      completedContracts,
     },
-    bestScripts: shouldUpdateBest
+    bestScriptsByContract: shouldReplaceBest
       ? {
-          ...save.bestScripts,
-          [currentLevelId]: currentScript,
+          ...nextSave.bestScriptsByContract,
+          [contract.id]: {
+            commandCount: currentCommandCount,
+            script,
+          },
         }
-      : save.bestScripts,
+      : nextSave.bestScriptsByContract,
   };
 }
 
 export function withSeenLevel1Walkthrough(save: SaveData): SaveData {
-  if (save.seenLevel1Walkthrough) {
+  if (save.completedTutorialFlags.level1_walkthrough_seen) {
     return save;
   }
   return {
     ...save,
-    seenLevel1Walkthrough: true,
+    completedTutorialFlags: {
+      ...save.completedTutorialFlags,
+      level1_walkthrough_seen: true,
+    },
   };
 }

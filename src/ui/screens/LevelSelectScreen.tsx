@@ -1,9 +1,9 @@
-import { levels } from '../../game/levels';
+import { contracts } from '../../game/contracts';
 import { useGameStore } from '../../store/useGameStore';
 
 export function LevelSelectScreen(): JSX.Element {
   const save = useGameStore((state) => state.save);
-  const startLevel = useGameStore((state) => state.startLevel);
+  const startContract = useGameStore((state) => state.startContract);
   const goToMainMenu = useGameStore((state) => state.goToMainMenu);
 
   return (
@@ -18,19 +18,19 @@ export function LevelSelectScreen(): JSX.Element {
       </header>
 
       <div className="level-grid">
-        {levels.map((level, index) => {
-          const unlocked = index <= save.unlockedLevelIndex;
-          const completed = Boolean(save.completedLevels[level.id]);
+        {contracts.map((contract) => {
+          const unlocked = save.campaign.unlockedContracts.includes(contract.id);
+          const completed = save.campaign.completedContracts.includes(contract.id);
 
           return (
-            <article key={level.id} className={`level-card ${unlocked ? '' : 'level-card--locked'}`}>
-              <h3>{level.name}</h3>
-              <p>{level.brief}</p>
+            <article key={contract.id} className={`level-card ${unlocked ? '' : 'level-card--locked'}`}>
+              <h3>{contract.title}</h3>
+              <p>{contract.summary}</p>
               <div className="level-card__meta">
                 <span>{completed ? 'Completed' : unlocked ? 'Unlocked' : 'Locked'}</span>
               </div>
-              <button className="btn btn-primary" disabled={!unlocked} onClick={() => startLevel(level.id)}>
-                {completed ? 'Replay Level' : 'Start Level'}
+              <button className="btn btn-primary" disabled={!unlocked} onClick={() => startContract(contract.id)}>
+                {completed ? 'Replay Contract' : 'Start Contract'}
               </button>
             </article>
           );

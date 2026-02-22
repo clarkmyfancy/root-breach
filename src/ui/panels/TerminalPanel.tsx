@@ -21,6 +21,7 @@ const apiReference = [
   'door("DOOR_ID").close()',
   'turret("TURRET_ID").retarget("TARGET_ID")',
   'device("DEVICE_ID").tag("friendly")',
+  'trace().spoof("MAINT_ROUTE")',
   'wait(5)',
   'log("message")',
 ];

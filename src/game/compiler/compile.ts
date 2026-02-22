@@ -1,8 +1,13 @@
 import type { LevelDefinition } from '../models/types';
 import { GLOBAL_TICK_LIMIT } from '../engine/constants';
 import { parseScript } from './parser';
-import type { CompiledCommand, CompileResult } from './scriptTypes';
+import type { CommandKind, CompiledCommand, CompileResult } from './scriptTypes';
 import { validateParsedScript } from './validator';
+
+export interface CompileOptions {
+  ownedToolIds?: string[];
+  requiredToolByCommand?: Partial<Record<CommandKind, string>>;
+}
 
 function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']): CompiledCommand[] {
   const scheduled: CompiledCommand[] = [];
@@ -28,13 +33,13 @@ function scheduleCommands(commands: ReturnType<typeof parseScript>['commands']):
   return scheduled;
 }
 
-export function compileScript(source: string, level: LevelDefinition): CompileResult {
+export function compileScript(source: string, level: LevelDefinition, options: CompileOptions = {}): CompileResult {
   const parsed = parseScript(source);
   if (parsed.errors.length) {
     return { commands: [], errors: parsed.errors };
   }
 
-  const validationErrors = validateParsedScript(level, parsed.commands);
+  const validationErrors = validateParsedScript(level, parsed.commands, options);
   if (validationErrors.length) {
     return { commands: [], errors: validationErrors };
   }

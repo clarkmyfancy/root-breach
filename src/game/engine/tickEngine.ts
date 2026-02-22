@@ -198,6 +198,10 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         emit(ctx, 'DEVICE_TAGGED', 'script', { deviceId: device.id, tag: command.textArg }, command.line);
         break;
       }
+      case 'trace.spoof': {
+        emit(ctx, 'TRACE_SPOOFED', 'script', { label: command.textArg ?? '' }, command.line);
+        break;
+      }
       case 'log': {
         emit(ctx, 'LOG', 'script', { message: command.textArg ?? '' }, command.line);
         break;

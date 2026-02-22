@@ -6,6 +6,7 @@ export type CommandKind =
   | 'door.close'
   | 'turret.retarget'
   | 'device.tag'
+  | 'trace.spoof'
   | 'wait'
   | 'log';
 

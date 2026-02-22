@@ -27,6 +27,8 @@ function formatEvent(event: EventRecord): string {
       return `Alarm delayed by ${event.payload.amount} ticks`;
     case 'DEVICE_TAGGED':
       return `${event.payload.deviceId} tagged ${event.payload.tag}`;
+    case 'TRACE_SPOOFED':
+      return `Trace signature spoofed: ${event.payload.label}`;
     case 'TURRET_TARGET_LOCK':
       return `Turret ${event.payload.turretId} locked ${event.payload.targetId}`;
     case 'TURRET_FIRED':

@@ -46,6 +46,11 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'device.tag', deviceId: m[1], textArg: m[2] }),
   },
   {
+    kind: 'trace.spoof',
+    regex: /^trace\(\)\.spoof\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'trace.spoof', textArg: m[1] }),
+  },
+  {
     kind: 'wait',
     regex: /^wait\((\d+)\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'wait', value: Number(m[1]) }),

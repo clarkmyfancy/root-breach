@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isDevGameplayMode } from '../config/gameMode';
 import { compileScript } from '../game/compiler/compile';
 import type { CompileError } from '../game/compiler/scriptTypes';
 import { contractById, contractIdBySiteId, contracts } from '../game/contracts';
@@ -6,7 +7,7 @@ import type { ContractDefinition } from '../game/contracts/types';
 import { runSimulation } from '../game/engine/simulationRunner';
 import type { FailureSummary, SimulationResult } from '../game/engine/eventTypes';
 import { levelById } from '../game/levels';
-import { commandToolRequirements, toolById } from '../game/tools';
+import { commandToolRequirements, toolById, toolCatalog } from '../game/tools';
 import { defaultSaveData, loadSaveData, persistSaveData, type SaveData } from '../persistence/saveGame';
 import { withAttemptAndScript, withContractOutcome, withScript, withSeenLevel1Walkthrough } from './progression';
 import {
@@ -115,9 +116,11 @@ function resolveWalkthroughOutcome(save: SaveData, walkthrough: WalkthroughSlice
 }
 
 function getCompileOptions(save: SaveData, contract?: ContractDefinition) {
-  const ownedToolIds = Object.entries(save.campaign.ownedTools)
-    .filter(([, ownedState]) => ownedState.owned)
-    .map(([toolId]) => toolId);
+  const ownedToolIds = isDevGameplayMode
+    ? toolCatalog.map((tool) => tool.id)
+    : Object.entries(save.campaign.ownedTools)
+        .filter(([, ownedState]) => ownedState.owned)
+        .map(([toolId]) => toolId);
   return {
     ownedToolIds,
     requiredToolByCommand: commandToolRequirements,
@@ -199,7 +202,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
     const missingRequiredTools = (contract.requiredTools ?? []).filter((toolId) => !state.save.campaign.ownedTools[toolId]?.owned);
-    if (missingRequiredTools.length > 0) {
+    if (!isDevGameplayMode && missingRequiredTools.length > 0) {
       return;
     }
 

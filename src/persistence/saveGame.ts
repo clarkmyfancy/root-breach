@@ -1,5 +1,6 @@
+import { isDevGameplayMode } from '../config/gameMode';
 import { contracts } from '../game/contracts';
-import { starterToolIds, type ToolOwnedState } from '../game/tools';
+import { starterToolIds, toolCatalog, type ToolOwnedState } from '../game/tools';
 
 export interface ContractOutcomeRecord {
   contractId: string;
@@ -53,8 +54,9 @@ const contractIdByLegacyLevelId: Record<string, string> = {
   level5: 'contract_tut_05',
 };
 
-function createDefaultOwnedTools(): Record<string, ToolOwnedState> {
-  return starterToolIds.reduce<Record<string, ToolOwnedState>>((acc, id) => {
+function createDefaultOwnedTools(includeAll = false): Record<string, ToolOwnedState> {
+  const ids = includeAll ? toolCatalog.map((tool) => tool.id) : starterToolIds;
+  return ids.reduce<Record<string, ToolOwnedState>>((acc, id) => {
     acc[id] = { owned: true, tier: 1 };
     return acc;
   }, {});
@@ -67,11 +69,11 @@ function unique(ids: string[]): string[] {
 export const defaultSaveData: SaveData = {
   version: 2,
   campaign: {
-    credits: 500,
-    reputation: 0,
+    credits: isDevGameplayMode ? 25000 : 500,
+    reputation: isDevGameplayMode ? 50 : 0,
     globalHeat: 0,
-    ownedTools: createDefaultOwnedTools(),
-    unlockedContracts: [contracts[0]?.id ?? 'contract_tut_01'],
+    ownedTools: createDefaultOwnedTools(isDevGameplayMode),
+    unlockedContracts: isDevGameplayMode ? contracts.map((contract) => contract.id) : [contracts[0]?.id ?? 'contract_tut_01'],
     completedContracts: [],
     contractHistory: [],
     attemptsByContract: {},
@@ -97,7 +99,7 @@ function sanitizeV2Save(parsed: Partial<SaveData>): SaveData {
     ? parsed.campaign?.unlockedContracts.filter((id): id is string => typeof id === 'string')
     : defaultSaveData.campaign.unlockedContracts;
 
-  return {
+  const normalized: SaveData = {
     ...defaultSaveData,
     version: 2,
     campaign: {
@@ -105,10 +107,7 @@ function sanitizeV2Save(parsed: Partial<SaveData>): SaveData {
       credits: parsed.campaign?.credits ?? defaultSaveData.campaign.credits,
       reputation: parsed.campaign?.reputation ?? defaultSaveData.campaign.reputation,
       globalHeat: parsed.campaign?.globalHeat ?? defaultSaveData.campaign.globalHeat,
-      ownedTools: {
-        ...defaultSaveData.campaign.ownedTools,
-        ...(parsed.campaign?.ownedTools ?? {}),
-      },
+      ownedTools: { ...defaultSaveData.campaign.ownedTools, ...(parsed.campaign?.ownedTools ?? {}) },
       unlockedContracts: unique(
         unlockedContracts.length > 0 ? unlockedContracts : defaultSaveData.campaign.unlockedContracts,
       ),
@@ -121,6 +120,8 @@ function sanitizeV2Save(parsed: Partial<SaveData>): SaveData {
     completedTutorialFlags: parsed.completedTutorialFlags ?? {},
     settings: parsed.settings ?? {},
   };
+
+  return applyDevModeGrants(normalized);
 }
 
 export function migrateSaveState(legacy: LegacySaveData | null | undefined): SaveData {
@@ -192,6 +193,29 @@ export function migrateSaveState(legacy: LegacySaveData | null | undefined): Sav
   });
 }
 
+function applyDevModeGrants(save: SaveData): SaveData {
+  if (!isDevGameplayMode) {
+    return save;
+  }
+
+  const allOwnedTools = toolCatalog.reduce<Record<string, ToolOwnedState>>((acc, tool) => {
+    acc[tool.id] = { owned: true, tier: tool.tier };
+    return acc;
+  }, {});
+
+  return {
+    ...save,
+    campaign: {
+      ...save.campaign,
+      credits: Math.max(save.campaign.credits, 25000),
+      reputation: Math.max(save.campaign.reputation, 50),
+      globalHeat: 0,
+      ownedTools: allOwnedTools,
+      unlockedContracts: contracts.map((contract) => contract.id),
+    },
+  };
+}
+
 function readRawSave(): string | null {
   const v2Raw = window.localStorage.getItem(STORAGE_KEY);
   if (v2Raw) {
@@ -204,7 +228,7 @@ export function loadSaveData(): SaveData {
   try {
     const raw = readRawSave();
     if (!raw) {
-      return { ...defaultSaveData };
+      return applyDevModeGrants({ ...defaultSaveData });
     }
 
     const parsed = JSON.parse(raw) as Partial<SaveData> & LegacySaveData;
@@ -214,9 +238,9 @@ export function loadSaveData(): SaveData {
 
     const migrated = migrateSaveState(parsed);
     persistSaveData(migrated);
-    return migrated;
+    return applyDevModeGrants(migrated);
   } catch {
-    return { ...defaultSaveData };
+    return applyDevModeGrants({ ...defaultSaveData });
   }
 }
 

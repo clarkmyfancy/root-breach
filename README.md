@@ -8,6 +8,17 @@ A deterministic, tick-based browser puzzle game prototype built with React + Typ
 2. `npm run dev`
 3. Open the local Vite URL in your browser.
 
+### Gameplay Modes
+
+- Local `npm run dev` defaults to **development gameplay mode**:
+  - all contracts unlocked
+  - all tools active
+  - progression/tool gating bypassed
+- Production builds default to **production gameplay mode** with normal progression.
+- Optional override:
+  - `VITE_ROOT_BREACH_MODE=development`
+  - `VITE_ROOT_BREACH_MODE=production`
+
 ## Deploy To Heroku
 
 This app is a static React build, but Heroku still needs a web process to serve files.  

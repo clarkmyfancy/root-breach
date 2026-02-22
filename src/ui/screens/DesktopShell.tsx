@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { gameplayMode, isDevGameplayMode } from '../../config/gameMode';
 import { contracts } from '../../game/contracts';
 import { factionById } from '../../game/factions';
 import { siteByLevelId } from '../../game/sites';
@@ -53,7 +54,7 @@ function ContractBoardApp(): JSX.Element {
           const unlocked = save.campaign.unlockedContracts.includes(contract.id);
           const completed = save.campaign.completedContracts.includes(contract.id);
           const missingTools = (contract.requiredTools ?? []).filter((toolId) => !save.campaign.ownedTools[toolId]?.owned);
-          const blockedByTools = missingTools.length > 0;
+          const blockedByTools = !isDevGameplayMode && missingTools.length > 0;
 
           return (
             <article key={contract.id} className={`contract-card ${unlocked ? '' : 'contract-card--locked'}`}>
@@ -66,8 +67,11 @@ function ContractBoardApp(): JSX.Element {
                 <span>Pay: {contract.payout}cr</span>
                 <span>Rep: +{contract.repReward}</span>
               </div>
-              {missingTools.length > 0 ? (
+              {missingTools.length > 0 && !isDevGameplayMode ? (
                 <div className="contract-requirements">Missing tools: {missingTools.map((id) => toolById[id]?.name ?? id).join(', ')}</div>
+              ) : null}
+              {missingTools.length > 0 && isDevGameplayMode ? (
+                <div className="contract-requirements">Dev mode override: tool requirements bypassed.</div>
               ) : null}
               <button
                 className="btn btn-primary"
@@ -256,6 +260,9 @@ export function DesktopShell(): JSX.Element {
           <div>
             <strong>Site:</strong> {activeSite?.id ?? '-'}
           </div>
+          <div>
+            <strong>Mode:</strong> {gameplayMode}
+          </div>
         </header>
 
         {phase === 'debrief' && debrief ? (
@@ -276,8 +283,20 @@ export function DesktopShell(): JSX.Element {
           </section>
         ) : null}
 
-        {phase === 'contractIntro' && activeContract ? (
-          <section className="panel contract-intro-banner">
+        <section className="desktop-content">
+          {activeDesktopApp === 'inbox' ? <InboxApp /> : null}
+          {activeDesktopApp === 'contracts' ? <ContractBoardApp /> : null}
+          {activeDesktopApp === 'worldMap' ? <WorldMapApp /> : null}
+          {activeDesktopApp === 'siteMonitor' ? <LevelScreen /> : null}
+          {activeDesktopApp === 'forensics' ? <ForensicsApp /> : null}
+          {activeDesktopApp === 'blackMarket' ? <BlackMarketApp /> : null}
+          {activeDesktopApp === 'profile' ? <ProfileApp /> : null}
+        </section>
+      </main>
+
+      {phase === 'contractIntro' && activeContract ? (
+        <div className="contract-intro-modal-backdrop" role="dialog" aria-modal="true" aria-label="Contract briefing">
+          <section className="panel contract-intro-modal">
             <div className="panel__title">Contract Briefing</div>
             <div>
               <strong>{activeContract.title}</strong> / client {activeContract.clientCodename}
@@ -302,18 +321,8 @@ export function DesktopShell(): JSX.Element {
               </button>
             </div>
           </section>
-        ) : null}
-
-        <section className="desktop-content">
-          {activeDesktopApp === 'inbox' ? <InboxApp /> : null}
-          {activeDesktopApp === 'contracts' ? <ContractBoardApp /> : null}
-          {activeDesktopApp === 'worldMap' ? <WorldMapApp /> : null}
-          {activeDesktopApp === 'siteMonitor' ? <LevelScreen /> : null}
-          {activeDesktopApp === 'forensics' ? <ForensicsApp /> : null}
-          {activeDesktopApp === 'blackMarket' ? <BlackMarketApp /> : null}
-          {activeDesktopApp === 'profile' ? <ProfileApp /> : null}
-        </section>
-      </main>
+        </div>
+      ) : null}
     </div>
   );
 }

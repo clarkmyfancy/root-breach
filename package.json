@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:prod": "VITE_ROOT_BREACH_MODE=production vite",
     "build": "tsc -b && vite build",
     "test:build": "rm -rf .tmp-test-build && tsc -p tsconfig.tests.json && echo '{\"type\":\"commonjs\"}' > .tmp-test-build/package.json",
     "test": "npm run test:build && node --test .tmp-test-build/tests/**/*.test.js",

@@ -694,10 +694,25 @@ textarea {
   color: #dbeafe;
 }
 
-.contract-intro-banner {
+.contract-intro-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 7, 18, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 1rem;
+}
+
+.contract-intro-modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+  border-color: #2f537f;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.6);
 }
 
 .contract-intro-story {

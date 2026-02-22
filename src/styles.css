@@ -655,30 +655,101 @@ textarea {
   gap: 0.7rem;
 }
 
-.world-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.6rem;
+.world-map-app {
+  display: flex;
+  flex-direction: column;
 }
 
-.world-region {
+.world-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 0.75rem;
+  min-height: 520px;
+}
+
+.world-map-canvas {
+  background: #081226;
+  border: 1px solid #26446d;
+  border-radius: 0.6rem;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.world-map-canvas svg {
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  background: radial-gradient(circle at 20% 20%, #0e2041 0%, #081327 55%, #060d1d 100%);
+}
+
+.world-map-node {
+  cursor: pointer;
+}
+
+.world-map-node:hover circle {
+  filter: brightness(1.12);
+}
+
+.world-map-legend {
+  display: flex;
+  gap: 0.8rem;
+  color: #c4d8f5;
+  font-size: 0.8rem;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.legend-dot--locked {
+  background: #475569;
+}
+
+.legend-dot--unlocked {
+  background: #38bdf8;
+}
+
+.legend-dot--complete {
+  background: #34d399;
+}
+
+.world-map-details {
   background: #0b152b;
   border: 1px solid #27406f;
   border-radius: 0.6rem;
-  padding: 0.65rem;
-}
-
-.world-region h4 {
-  margin: 0 0 0.45rem;
-}
-
-.world-route {
+  padding: 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.55rem;
+}
+
+.world-map-details h4 {
+  margin: 0;
+}
+
+.world-map-contract {
   border-top: 1px solid rgba(70, 98, 146, 0.45);
-  padding-top: 0.35rem;
-  margin-top: 0.35rem;
+  padding-top: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.world-map-contract__title {
+  font-weight: 700;
+}
+
+.world-map-contract p {
+  margin: 0;
+  color: #bdd1ef;
+  font-size: 0.9rem;
 }
 
 .debrief-banner {
@@ -830,6 +901,10 @@ textarea {
   }
 
   .desktop-forensics {
+    grid-template-columns: 1fr;
+  }
+
+  .world-map-layout {
     grid-template-columns: 1fr;
   }
 

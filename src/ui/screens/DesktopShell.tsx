@@ -89,32 +89,150 @@ function ContractBoardApp(): JSX.Element {
 }
 
 function WorldMapApp(): JSX.Element {
-  const grouped = useMemo(() => {
-    const map: Record<string, typeof contracts> = {};
-    for (const contract of contracts) {
-      if (!map[contract.regionId]) {
-        map[contract.regionId] = [];
+  const save = useGameStore((state) => state.save);
+  const startContract = useGameStore((state) => state.startContract);
+
+  const siteLayout: Array<{
+    id: string;
+    regionId: string;
+    x: number;
+    y: number;
+    label: string;
+    levelId: string;
+  }> = [
+    { id: 'site_dock_gate', regionId: 'docklands', x: 120, y: 220, label: 'Dock Gate', levelId: 'level1' },
+    { id: 'site_river_lock', regionId: 'riverline', x: 280, y: 150, label: 'River Lock', levelId: 'level2' },
+    { id: 'site_old_core_arc', regionId: 'old_core', x: 430, y: 210, label: 'Old Core Arc', levelId: 'level3' },
+    { id: 'site_uptown_sequence', regionId: 'uptown_grid', x: 610, y: 140, label: 'Uptown Sequence', levelId: 'level4' },
+    { id: 'site_vault_lane', regionId: 'vault_sector', x: 760, y: 250, label: 'Vault Lane', levelId: 'level5' },
+  ];
+
+  const regionOverlays = [
+    { id: 'docklands', x: 40, y: 140, width: 180, height: 180 },
+    { id: 'riverline', x: 200, y: 80, width: 190, height: 160 },
+    { id: 'old_core', x: 360, y: 120, width: 180, height: 170 },
+    { id: 'uptown_grid', x: 530, y: 70, width: 190, height: 170 },
+    { id: 'vault_sector', x: 680, y: 160, width: 180, height: 180 },
+  ];
+
+  const [selectedSiteId, setSelectedSiteId] = useState(siteLayout[0].id);
+  const selectedSite = siteLayout.find((site) => site.id === selectedSiteId) ?? siteLayout[0];
+  const selectedContracts = contracts.filter((contract) => contract.siteId === selectedSite.levelId);
+
+  const firstContractBySite = useMemo(() => {
+    return contracts.reduce<Record<string, string>>((acc, contract) => {
+      if (!acc[contract.siteId]) {
+        acc[contract.siteId] = contract.id;
       }
-      map[contract.regionId].push(contract);
-    }
-    return map;
+      return acc;
+    }, {});
   }, []);
 
+  const links: Array<[string, string]> = [
+    ['site_dock_gate', 'site_river_lock'],
+    ['site_river_lock', 'site_old_core_arc'],
+    ['site_old_core_arc', 'site_uptown_sequence'],
+    ['site_uptown_sequence', 'site_vault_lane'],
+    ['site_river_lock', 'site_uptown_sequence'],
+  ];
+
+  const nodeById = siteLayout.reduce<Record<string, (typeof siteLayout)[number]>>((acc, node) => {
+    acc[node.id] = node;
+    return acc;
+  }, {});
+
   return (
-    <div className="panel desktop-app">
+    <div className="panel desktop-app world-map-app">
       <div className="panel__title">Network Map</div>
-      <div className="world-grid">
-        {Object.entries(grouped).map(([regionId, regionContracts]) => (
-          <article className="world-region" key={regionId}>
-            <h4>{regionId}</h4>
-            {regionContracts.map((contract) => (
-              <div key={contract.id} className="world-route">
-                <span>{contract.title}</span>
-                <span className="muted">{factionById[contract.factionId]?.name ?? contract.factionId}</span>
-              </div>
+      <div className="world-map-layout">
+        <div className="world-map-canvas">
+          <svg viewBox="0 0 900 360" role="img" aria-label="World map network">
+            <defs>
+              <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#173257" strokeWidth="1" opacity="0.4" />
+              </pattern>
+            </defs>
+            <rect x="0" y="0" width="900" height="360" fill="url(#grid)" />
+
+            {regionOverlays.map((region) => (
+              <g key={region.id}>
+                <rect
+                  x={region.x}
+                  y={region.y}
+                  width={region.width}
+                  height={region.height}
+                  rx="22"
+                  ry="22"
+                  fill="#0d1d3b"
+                  stroke="#2c4f80"
+                  opacity="0.65"
+                />
+                <text x={region.x + 10} y={region.y + 20} fill="#9cc3f0" fontSize="12">
+                  {region.id}
+                </text>
+              </g>
             ))}
-          </article>
-        ))}
+
+            {links.map(([fromId, toId]) => {
+              const from = nodeById[fromId];
+              const to = nodeById[toId];
+              return (
+                <line
+                  key={`${fromId}-${toId}`}
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                  stroke="#4a6d9f"
+                  strokeWidth="2.5"
+                  opacity="0.8"
+                />
+              );
+            })}
+
+            {siteLayout.map((node) => {
+              const firstContractId = firstContractBySite[node.levelId];
+              const unlocked = firstContractId ? save.campaign.unlockedContracts.includes(firstContractId) : false;
+              const completed = firstContractId ? save.campaign.completedContracts.includes(firstContractId) : false;
+              const isSelected = node.id === selectedSiteId;
+              const fill = completed ? '#34d399' : unlocked ? '#38bdf8' : '#475569';
+              const stroke = isSelected ? '#f8fafc' : '#0f172a';
+
+              return (
+                <g key={node.id} onClick={() => setSelectedSiteId(node.id)} className="world-map-node">
+                  <circle cx={node.x} cy={node.y} r={isSelected ? 20 : 16} fill={fill} stroke={stroke} strokeWidth="3" />
+                  <text x={node.x + 24} y={node.y + 4} fill="#dbeafe" fontSize="12">
+                    {node.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+          <div className="world-map-legend">
+            <span><i className="legend-dot legend-dot--locked" /> Locked</span>
+            <span><i className="legend-dot legend-dot--unlocked" /> Unlocked</span>
+            <span><i className="legend-dot legend-dot--complete" /> Completed</span>
+          </div>
+        </div>
+
+        <aside className="world-map-details">
+          <h4>{selectedSite.label}</h4>
+          <div className="muted">Region: {selectedSite.regionId}</div>
+          {selectedContracts.map((contract) => {
+            const unlocked = save.campaign.unlockedContracts.includes(contract.id);
+            const completed = save.campaign.completedContracts.includes(contract.id);
+            return (
+              <article key={contract.id} className="world-map-contract">
+                <div className="world-map-contract__title">{contract.title}</div>
+                <div className="muted">{factionById[contract.factionId]?.name ?? contract.factionId}</div>
+                <p>{contract.summary}</p>
+                <button className="btn btn-primary" disabled={!unlocked} onClick={() => startContract(contract.id)}>
+                  {completed ? 'Replay' : unlocked ? 'Open Briefing' : 'Locked'}
+                </button>
+              </article>
+            );
+          })}
+        </aside>
       </div>
     </div>
   );

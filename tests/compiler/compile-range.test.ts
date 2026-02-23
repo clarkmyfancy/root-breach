@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compileScript } from '../../src/game/compiler/compile';
 import { level1 } from '../../src/game/levels/level1';
+import { level2 } from '../../src/game/levels/level2';
 
 test('compile rejects commands scheduled at or after tickLimit', () => {
   const source = ['wait(40)', 'setAim(-1, -1)'].join('\n');
@@ -54,6 +55,14 @@ test('setAim supports sqrt() in expressions', () => {
   assert.equal(result.errors.length, 0);
   assert.equal(result.commands.length, 1);
   assert.equal(result.commands[0].xValue, 3);
+  assert.equal(result.commands[0].yValue, -2);
+});
+
+test('setAim supports exponent operator in expressions', () => {
+  const result = compileScript('setAim(2**3, -2)', level1);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].xValue, 8);
   assert.equal(result.commands[0].yValue, -2);
 });
 
@@ -142,4 +151,64 @@ test('supports screenshot-style nearest-guard script with vars, loop, if, and in
   assert.equal(result.commands[0].kind, 'turret.setAim');
   assert.equal(result.commands[0].xValue, -5);
   assert.equal(result.commands[0].yValue, -4);
+});
+
+test('level2 nearest-guard loop with squared distance compiles', () => {
+  const source = [
+    'closestSquareDist = 999999',
+    'aimX = 0',
+    'aimY = 0',
+    'i = 0',
+    '',
+    'loop(numGuards) {',
+    '  // find the distance from the guard to the player',
+    '  xDist = intruderPosX - guardPosX[i]',
+    '  yDist = intruderPosY - guardPosY[i]',
+    '',
+    '  squareDist = xDist * xDist + yDist * yDist',
+    '',
+    '  // if that distance is closer than the current closest, set that one',
+    '  if (squareDist < closestSquareDist) {',
+    '    aimX = guardPosX[i]',
+    '    aimY = guardPosY[i]',
+    '    closestSquareDist = squareDist',
+    '  }',
+    '  i ++',
+    '}',
+    'setAim(aimX, aimY)',
+  ].join('\n');
+  const result = compileScript(source, level2);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].kind, 'turret.setAim');
+  assert.equal(Number.isFinite(result.commands[0].xValue ?? NaN), true);
+  assert.equal(Number.isFinite(result.commands[0].yValue ?? NaN), true);
+});
+
+test('level2 nearest-guard loop compiles with exponent operator form', () => {
+  const source = [
+    'closestGuardDist = 9999',
+    'aimX = 0',
+    'aimY = 0',
+    'i = 0',
+    '',
+    'loop(numGuards) {',
+    '  xDist = intruderPosX - guardPosX[i]',
+    '  yDist = intruderPosY - guardPosY[i]',
+    '  currentDist = sqrt(xDist**2) + sqrt(yDist**2)',
+    '  if (currentDist < closestGuardDist) {',
+    '    aimX = guardPosX[i]',
+    '    aimY = guardPosY[i]',
+    '    closestGuardDist = currentDist',
+    '  }',
+    '  i ++',
+    '}',
+    'setAim(aimX, aimY)',
+  ].join('\n');
+  const result = compileScript(source, level2);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].kind, 'turret.setAim');
 });

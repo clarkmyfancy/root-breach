@@ -68,6 +68,7 @@ interface GameStore {
   prevWalkthroughStep: () => void;
   dismissWalkthrough: () => void;
   markWalkthroughAction: (action: WalkthroughAction) => void;
+  completeCurrentLevel: () => void;
 }
 
 const shouldUnlockAllLevelsInDev = import.meta.env.DEV;
@@ -87,7 +88,7 @@ const initialSave =
   typeof window !== 'undefined' ? withModeSaveOverrides(loadSaveData()) : withModeSaveOverrides(defaultSaveData);
 
 function getInitialScript(levelId: string): string {
-  if (levelId === 'level1') {
+  if (levelId === 'level1' || levelId === 'level2') {
     return 'setAim(intruderPosX, intruderPosY)';
   }
   return '';
@@ -427,5 +428,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   selectDevice: (deviceId) => {
     set({ selectedDeviceId: deviceId });
+  },
+
+  completeCurrentLevel: () => {
+    const state = get();
+    if (!state.currentLevelId) {
+      return;
+    }
+
+    const nextSave = withLevelCompletion(state.save, levels, state.currentLevelId, state.scriptText);
+    persistSaveData(nextSave);
+    set({
+      save: nextSave,
+      lastOutcome: 'success',
+    });
   },
 }));

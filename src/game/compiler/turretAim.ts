@@ -62,7 +62,7 @@ class ExpressionParser {
     let value = this.parseUnary();
     while (true) {
       this.skipWhitespace();
-      if (this.consumeIf('*')) {
+      if (this.consumeIfMultiply()) {
         value *= this.parseUnary();
         continue;
       }
@@ -86,7 +86,18 @@ class ExpressionParser {
     if (this.consumeIf('-')) {
       return -this.parseUnary();
     }
-    return this.parsePrimary();
+    return this.parsePower();
+  }
+
+  private parsePower(): number {
+    let value = this.parsePrimary();
+    this.skipWhitespace();
+    if (this.consumeIfDoubleStar()) {
+      // Right-associative power chain: 2**3**2 => 2**(3**2)
+      const exponent = this.parseUnary();
+      value = value ** exponent;
+    }
+    return value;
   }
 
   private parsePrimary(): number {
@@ -206,6 +217,28 @@ class ExpressionParser {
     if (!this.consumeIf(ch)) {
       throw new Error(`Expected "${ch}"`);
     }
+  }
+
+  private consumeIfDoubleStar(): boolean {
+    this.skipWhitespace();
+    if (this.peek() !== '*' || this.peekAt(1) !== '*') {
+      return false;
+    }
+    this.pos += 2;
+    return true;
+  }
+
+  private consumeIfMultiply(): boolean {
+    this.skipWhitespace();
+    if (this.peek() !== '*' || this.peekAt(1) === '*') {
+      return false;
+    }
+    this.pos += 1;
+    return true;
+  }
+
+  private peekAt(offset: number): string {
+    return this.source[this.pos + offset] ?? '';
   }
 
   private isNumberStart(ch: string): boolean {

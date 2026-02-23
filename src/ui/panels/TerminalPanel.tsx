@@ -61,21 +61,82 @@ export function TerminalPanel({
   const lineCount = useMemo(() => Math.max(18, source.split(/\r?\n/).length), [source]);
   const lineNumbers = useMemo(() => Array.from({ length: lineCount }, (_, idx) => idx + 1), [lineCount]);
 
+  const insertTextAtSelection = (textarea: HTMLTextAreaElement, text: string) => {
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+    const nextSource = source.slice(0, selectionStart) + text + source.slice(selectionEnd);
+    onChange(nextSource);
+
+    const nextCaret = selectionStart + text.length;
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
   const handleTurretEditorKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!event.ctrlKey && !event.metaKey) {
+      if (event.key === '}') {
+        const textarea = event.currentTarget;
+        const selectionStart = textarea.selectionStart;
+        const selectionEnd = textarea.selectionEnd;
+
+        if (selectionStart === selectionEnd) {
+          const before = source.slice(0, selectionStart);
+          const after = source.slice(selectionEnd);
+          const lineStart = before.lastIndexOf('\n') + 1;
+          const indentOnlyPrefix = before.slice(lineStart);
+
+          if (/^\s+$/.test(indentOnlyPrefix)) {
+            event.preventDefault();
+            const dedentedPrefix = indentOnlyPrefix.length >= 2 ? indentOnlyPrefix.slice(0, -2) : '';
+            const nextSource = source.slice(0, lineStart) + dedentedPrefix + '}' + after;
+            onChange(nextSource);
+
+            const nextCaret = lineStart + dedentedPrefix.length + 1;
+            window.requestAnimationFrame(() => {
+              textarea.focus();
+              textarea.setSelectionRange(nextCaret, nextCaret);
+            });
+            return;
+          }
+        }
+      }
+
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        insertTextAtSelection(event.currentTarget, '  ');
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const textarea = event.currentTarget;
+        const selectionStart = textarea.selectionStart;
+        const selectionEnd = textarea.selectionEnd;
+        const before = source.slice(0, selectionStart);
+        const lineStart = before.lastIndexOf('\n') + 1;
+        const currentLine = before.slice(lineStart);
+        const baseIndent = currentLine.match(/^\s*/)?.[0] ?? '';
+        const extraIndent = currentLine.trimEnd().endsWith('{') ? '  ' : '';
+        const insertion = `\n${baseIndent}${extraIndent}`;
+
+        event.preventDefault();
+        const nextSource = source.slice(0, selectionStart) + insertion + source.slice(selectionEnd);
+        onChange(nextSource);
+
+        const nextCaret = selectionStart + insertion.length;
+        window.requestAnimationFrame(() => {
+          textarea.focus();
+          textarea.setSelectionRange(nextCaret, nextCaret);
+        });
+      }
       return;
     }
 
     const key = event.key.toLowerCase();
-    if (key === 'c') {
-      event.preventDefault();
-      onReplay();
-      return;
-    }
-
     if (key === 'r') {
       event.preventDefault();
-      onResetScript();
+      onReplay();
     }
   };
 
@@ -135,7 +196,8 @@ export function TerminalPanel({
                 Loops auto-advance if no explicit <code>wait(n)</code>.
               </div>
               <div>
-                Math works in expressions: <code>+ - * /</code>, <code>sqrt(...)</code>, and <code>guardPosX[numGuards-1]</code>.
+                Math works in expressions: <code>+ - * / **</code>, <code>sqrt(...)</code>, and{' '}
+                <code>guardPosX[numGuards-1]</code>.
               </div>
               <div>
                 <code>// comment</code> skips a line.
@@ -144,8 +206,7 @@ export function TerminalPanel({
 
             <div className="turret-terminal-divider turret-terminal-divider-bottom" />
             <div className="turret-terminal-hints">
-              <div>Ctrl+C: COMPILE/RUN</div>
-              <div>Ctrl+R: RESET</div>
+              <div>Ctrl+R: COMPILE/RUN</div>
             </div>
 
             <div className="terminal-actions terminal-actions-turret">

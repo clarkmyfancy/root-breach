@@ -6,9 +6,12 @@ function createArenaWalls(): Point[] {
   const right = 16;
   const top = 2;
   const bottom = 10;
+  const topExitX = 14;
 
   for (let x = left; x <= right; x += 1) {
-    walls.push({ x, y: top });
+    if (x !== topExitX) {
+      walls.push({ x, y: top });
+    }
     if (x < 8 || x > 9) {
       walls.push({ x, y: bottom });
     }
@@ -120,6 +123,14 @@ export const level1: LevelDefinition = {
       x: 11,
       y: 11,
       enabled: true,
+    },
+    {
+      id: 'NEXT_DOOR',
+      type: 'door',
+      x: 14,
+      y: 2,
+      enabled: true,
+      isOpen: false,
     },
   ],
   networkScope: ['T1'],

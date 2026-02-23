@@ -1,128 +1,81 @@
 # Root Breach
 
-Root Breach is a React + TypeScript puzzle game prototype where the player physically moves on a map, accesses a terminal, writes code, and survives an encounter.
+Root Breach is a React + TypeScript coding-stealth prototype: move on a map, access a turret terminal, and write code to survive and clear levels.
 
-Current project state is intentionally focused: one playable mission (`level1`) centered on turret programming.
+## Current Game State
 
-## Current Gameplay Loop
-
-1. Start Level 1 from the mission board.
-2. Move the player in map mode (`WASD` or arrow keys).
-3. Enter the arena between walls to start combat.
-4. Move near the turret terminal and press `E` to open terminal mode.
-5. Write turret code, compile, and run.
-6. Terminal closes on run and returns to map mode.
-7. Use the floating `Replay` button on the map to reset the encounter.
-
-Important current behavior:
-
-- The terminal is the turret brain in this level.
-- If the script has no valid turret instruction (for example only `//setAim(...)`), the turret does not fire.
-- Event log UI is currently removed.
+- Two playable turret levels: `level1` and auto-generated harder `level2`.
+- Map mode uses manual movement (`WASD` / arrows).
+- Terminal opens as a modal when near the turret terminal (`E`).
+- Turret logic comes from terminal code. If code does not produce `setAim(...)`, the turret has no aim.
+- In map mode, the turret script is evaluated each turret cycle against live state (current intruder + alive guards), then it aims/fires from that result.
+- Clear all guards to open the exit door, then walk through it to advance.
 
 ## Controls
 
-- `WASD` or arrow keys: move on map
+- `WASD` / arrows: move
 - `E`: open terminal when near terminal device
 - `Esc`: close terminal modal
+- `Ctrl/Cmd + R` in terminal: compile + run
 - Terminal buttons:
-  - `Compile`: syntax + semantic validation only
-  - `Run`: execute compiled script and close modal
-  - `Reset`: clear terminal source
-- Terminal shortcuts:
-  - `Ctrl/Cmd + C`: compile/run
-  - `Ctrl/Cmd + R`: reset source
+  - `Compile`: validate script
+  - `Run`: compile/run and close modal
+  - `Reset`: clear source
+- Map overlay `Replay`: reset current encounter
 
-## Scripting Language (Current)
+## Terminal Language (Turret Focus)
 
-Parser supports several commands globally, but Level 1 gameplay is built around turret aiming.
-
-### Key command for Level 1
+Primary command:
 
 - `setAim(x, y)`
 
-### Supported aim expressions
+Available variables:
 
-- Integers: `-2`, `0`, `5`
-- Dynamic variables:
-  - `intruderPosX`
-  - `intruderPosY`
-  - `numGuards`
-  - `guardPosX[index]`
-  - `guardPosY[index]`
+- `intruderPosX`, `intruderPosY`
+- `numGuards`
+- `guardPosX[index]`, `guardPosY[index]`
 
-Example:
+Supported expressions:
 
-```txt
-// Track player
-setAim(intruderPosX, intruderPosY)
-```
+- Arithmetic: `+ - * / **`
+- `sqrt(...)`
+- Locals via assignment (`x = ...`) and increment (`i ++`)
+- Comments: `// ...` and `# ...` (full-line)
 
-### Comments and loops
+Control flow:
 
-- Full-line comments are ignored when prefixed with `//` or `#`.
-- `while (condition) { ... }` is supported and expanded at compile time.
-- Conditions support:
-  - `true`, `false`
-  - comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- Loop safety:
-  - body must advance time with `wait(n)`
-  - compile-time iteration guard prevents runaway expansion
+- `if (condition) { ... }`
+- `while (condition) { ... }`
+- `loop(count) { ... }`
+- Comparison operators: `== != < <= > >=`
+- Infinite-loop guard is compile-time bounded; loops without explicit `wait(n)` auto-advance time.
 
-## Dev Mode vs Production Mode
+## Dev vs Production Unlocking
 
-Unlock behavior is environment-aware:
+- Dev mode (`import.meta.env.DEV`): all levels unlocked.
+- Production build: levels unlock in order.
 
-- Dev mode (`import.meta.env.DEV === true`): all levels unlocked.
-- Production build: normal progression unlock order.
+## Architecture (Concise)
 
-There is currently one level, but the unlock system is still in place for future missions.
+- `src/game/compiler`: parsing, validation, compile-time expansion, expression evaluation.
+- `src/game/engine`: deterministic tick simulation and replay model.
+- `src/game/levels`: level definitions/registry (`level1`, `level2`).
+- `src/store/useGameStore.ts`: app flow, progression, replay state.
+- `src/ui/screens/LevelScreen.tsx`: map-mode encounter loop + terminal modal + level transition.
+- `src/persistence/saveGame.ts`: local save data (`localStorage`).
 
-## Architecture
+Note: there are two execution contexts today:
 
-The codebase is split into deterministic simulation, compiler pipeline, state orchestration, and UI.
+- Engine replay simulation (deterministic tick model).
+- Real-time map encounter loop in `LevelScreen` for turret-aim levels.
 
-- `src/game/compiler`
-  - `parser.ts`: command syntax
-  - `validator.ts`: device scope and semantic checks
-  - `compile.ts`: scheduling + while-loop expansion
-  - `turretAim.ts`: expression resolution for `setAim`
-- `src/game/engine`
-  - `tickEngine.ts`: deterministic tick simulation and event emission
-  - `simulationRunner.ts`: engine entrypoint
-  - `eventTypes.ts`: replay/event contracts
-- `src/game/levels`
-  - `level1.ts`: current mission data
-  - `index.ts`: level registry
-- `src/store`
-  - `useGameStore.ts`: app phase/state machine and replay controls
-  - `progression.ts`: unlock/attempt/best-script rules
-- `src/ui`
-  - `screens/LevelScreen.tsx`: map mode + terminal modal flow
-  - `panels/TerminalPanel.tsx`, `MapPanel.tsx`, `ReplayControls.tsx`, etc.
-- `src/persistence/saveGame.ts`
-  - local save/load via `localStorage`
-
-## Architectural Notes (Important)
-
-1. There are two runtime paths:
-   - Deterministic tick engine (`src/game/engine`) used for simulation/replay.
-   - Real-time turret-aim encounter loop in `src/ui/screens/LevelScreen.tsx` for WASD map mode.
-2. The compiler/engine path is well covered by automated tests.
-3. The map-mode encounter path is more UI-driven and should stay behaviorally aligned with engine rules as the game grows.
-4. Parser supports broader command surface than Level 1 currently uses; treat it as platform capacity for future levels.
+Keeping these behaviorally aligned is the main architectural constraint.
 
 ## Tests
 
-- `tests/compiler/compile-range.test.ts`
-  - compile bounds
-  - expression validation
-  - comments
-  - while-loop expansion rules
-- `tests/engine/determinism.test.ts`
-  - deterministic replay behavior
-  - fixed vs dynamic turret aiming
-  - “no instructions => no turret fire” behavior
+- `tests/compiler/compile-range.test.ts`: expression, loop, and compile behavior.
+- `tests/engine/determinism.test.ts`: replay determinism and turret behavior invariants.
+- `tests/levels/levels.test.ts`: level registry/difficulty/door invariants.
 
 Run:
 
@@ -130,18 +83,16 @@ Run:
 npm test
 ```
 
-## Local Development
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Production Build
+Build and serve:
 
 ```bash
 npm run build
 npm start
 ```
-
-`npm start` serves `dist/` through `server.js` and supports SPA route fallback.

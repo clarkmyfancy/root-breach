@@ -10,6 +10,26 @@ interface StructuredLineStatement {
   command: ParsedCommand;
 }
 
+interface StructuredAssignStatement {
+  type: 'assign';
+  line: number;
+  variable: string;
+  expression: string;
+}
+
+interface StructuredIncrementStatement {
+  type: 'increment';
+  line: number;
+  variable: string;
+}
+
+interface StructuredIfStatement {
+  type: 'if';
+  line: number;
+  condition: string;
+  body: StructuredStatement[];
+}
+
 interface StructuredWhileStatement {
   type: 'while';
   line: number;
@@ -17,13 +37,53 @@ interface StructuredWhileStatement {
   body: StructuredStatement[];
 }
 
-type StructuredStatement = StructuredLineStatement | StructuredWhileStatement;
+interface StructuredLoopStatement {
+  type: 'loop';
+  line: number;
+  countExpr: string;
+  body: StructuredStatement[];
+}
+
+type StructuredStatement =
+  | StructuredLineStatement
+  | StructuredAssignStatement
+  | StructuredIncrementStatement
+  | StructuredIfStatement
+  | StructuredWhileStatement
+  | StructuredLoopStatement;
 
 const MAX_WHILE_ITERATIONS = 5000;
 
 function isCommentOrEmpty(raw: string): boolean {
   const trimmed = raw.trim();
   return trimmed.length === 0 || trimmed.startsWith('//') || trimmed.startsWith('#');
+}
+
+function parseBlockHeader(
+  trimmed: string,
+  keyword: 'while' | 'if' | 'loop',
+): { expression: string; hasOpeningBrace: boolean } | null {
+  const match = trimmed.match(new RegExp(`^${keyword}\\s*\\((.+)\\)\\s*(\\{)?$`));
+  if (!match) {
+    return null;
+  }
+  return {
+    expression: match[1].trim(),
+    hasOpeningBrace: Boolean(match[2]),
+  };
+}
+
+function findBodyStart(lines: string[], index: number): { bodyStart?: number; error?: string } {
+  let cursor = index;
+  while (cursor < lines.length && isCommentOrEmpty(lines[cursor])) {
+    cursor += 1;
+  }
+
+  if (cursor >= lines.length || lines[cursor].trim() !== '{') {
+    return { error: 'Expected "{" to open block body' };
+  }
+
+  return { bodyStart: cursor + 1 };
 }
 
 function parseStructuredBlock(
@@ -65,10 +125,26 @@ function parseStructuredBlock(
       };
     }
 
-    const whileMatch = trimmed.match(/^while\s*\((.+)\)\s*\{$/);
-    if (whileMatch) {
-      const condition = whileMatch[1].trim();
-      const inner = parseStructuredBlock(lines, idx + 1, true);
+    if (trimmed === '{') {
+      errors.push({ line: lineNumber, message: 'Unexpected opening brace "{"' });
+      idx += 1;
+      continue;
+    }
+
+    const whileHeader = parseBlockHeader(trimmed, 'while');
+    if (whileHeader) {
+      const bodyStartResult = whileHeader.hasOpeningBrace ? { bodyStart: idx + 1 } : findBodyStart(lines, idx + 1);
+      if (bodyStartResult.error || bodyStartResult.bodyStart === undefined) {
+        errors.push({ line: lineNumber, message: bodyStartResult.error ?? 'Invalid while block' });
+        return {
+          statements,
+          nextIndex: lines.length,
+          closed: false,
+          errors,
+        };
+      }
+
+      const inner = parseStructuredBlock(lines, bodyStartResult.bodyStart, true);
       if (inner.errors.length) {
         errors.push(...inner.errors);
       }
@@ -85,17 +161,105 @@ function parseStructuredBlock(
       statements.push({
         type: 'while',
         line: lineNumber,
-        condition,
+        condition: whileHeader.expression,
         body: inner.statements,
       });
       idx = inner.nextIndex;
       continue;
     }
 
-    if (trimmed.includes('{') || trimmed.includes('}')) {
-      errors.push({
+    const ifHeader = parseBlockHeader(trimmed, 'if');
+    if (ifHeader) {
+      const bodyStartResult = ifHeader.hasOpeningBrace ? { bodyStart: idx + 1 } : findBodyStart(lines, idx + 1);
+      if (bodyStartResult.error || bodyStartResult.bodyStart === undefined) {
+        errors.push({ line: lineNumber, message: bodyStartResult.error ?? 'Invalid if block' });
+        return {
+          statements,
+          nextIndex: lines.length,
+          closed: false,
+          errors,
+        };
+      }
+
+      const inner = parseStructuredBlock(lines, bodyStartResult.bodyStart, true);
+      if (inner.errors.length) {
+        errors.push(...inner.errors);
+      }
+      if (!inner.closed) {
+        errors.push({ line: lineNumber, message: 'Missing closing brace for if block' });
+        return {
+          statements,
+          nextIndex: lines.length,
+          closed: false,
+          errors,
+        };
+      }
+
+      statements.push({
+        type: 'if',
         line: lineNumber,
-        message: 'Unsupported brace syntax. Use: while (<condition>) { ... }',
+        condition: ifHeader.expression,
+        body: inner.statements,
+      });
+      idx = inner.nextIndex;
+      continue;
+    }
+
+    const loopHeader = parseBlockHeader(trimmed, 'loop');
+    if (loopHeader) {
+      const bodyStartResult = loopHeader.hasOpeningBrace ? { bodyStart: idx + 1 } : findBodyStart(lines, idx + 1);
+      if (bodyStartResult.error || bodyStartResult.bodyStart === undefined) {
+        errors.push({ line: lineNumber, message: bodyStartResult.error ?? 'Invalid loop block' });
+        return {
+          statements,
+          nextIndex: lines.length,
+          closed: false,
+          errors,
+        };
+      }
+
+      const inner = parseStructuredBlock(lines, bodyStartResult.bodyStart, true);
+      if (inner.errors.length) {
+        errors.push(...inner.errors);
+      }
+      if (!inner.closed) {
+        errors.push({ line: lineNumber, message: 'Missing closing brace for loop block' });
+        return {
+          statements,
+          nextIndex: lines.length,
+          closed: false,
+          errors,
+        };
+      }
+
+      statements.push({
+        type: 'loop',
+        line: lineNumber,
+        countExpr: loopHeader.expression,
+        body: inner.statements,
+      });
+      idx = inner.nextIndex;
+      continue;
+    }
+
+    const incrementMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\+\+$/);
+    if (incrementMatch) {
+      statements.push({
+        type: 'increment',
+        line: lineNumber,
+        variable: incrementMatch[1],
+      });
+      idx += 1;
+      continue;
+    }
+
+    const assignMatch = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
+    if (assignMatch) {
+      statements.push({
+        type: 'assign',
+        line: lineNumber,
+        variable: assignMatch[1],
+        expression: assignMatch[2].trim(),
       });
       idx += 1;
       continue;
@@ -137,26 +301,44 @@ function parseStructuredSource(source: string): { statements: StructuredStatemen
   };
 }
 
-function resolveConditionOperand(token: string, level: LevelDefinition): { value?: number; error?: string } {
-  const trimmed = token.trim();
-  if (/^-?\d+$/.test(trimmed)) {
-    return { value: Number(trimmed) };
-  }
+function createImplicitWaitCommand(line: number): ParsedCommand {
+  return {
+    line,
+    raw: 'wait(1)',
+    kind: 'wait',
+    value: 1,
+  };
+}
 
-  const context = getTurretAimContext(level);
-  if (!context) {
-    return { error: `Unsupported condition operand "${trimmed}"` };
-  }
+function createFallbackAimContext(): NonNullable<ReturnType<typeof getTurretAimContext>> {
+  return {
+    intruderPosX: 0,
+    intruderPosY: 0,
+    numGuards: 0,
+    guardPosX: [],
+    guardPosY: [],
+  };
+}
 
-  const resolved = resolveAimExpression(trimmed, context);
+function resolveNumericExpression(
+  expression: string,
+  level: LevelDefinition,
+  locals: Record<string, number>,
+): { value?: number; error?: string } {
+  const context = getTurretAimContext(level) ?? createFallbackAimContext();
+  const resolved = resolveAimExpression(expression.trim(), context, locals);
   if (resolved.error || resolved.value === undefined) {
-    return { error: resolved.error ?? `Unsupported condition operand "${trimmed}"` };
+    return { error: resolved.error ?? `Unsupported expression "${expression.trim()}"` };
   }
 
   return { value: resolved.value };
 }
 
-function evaluateWhileCondition(condition: string, level: LevelDefinition): { value?: boolean; error?: string } {
+function evaluateCondition(
+  condition: string,
+  level: LevelDefinition,
+  locals: Record<string, number>,
+): { value?: boolean; error?: string } {
   const trimmed = condition.trim();
 
   if (/^true$/i.test(trimmed)) {
@@ -169,12 +351,12 @@ function evaluateWhileCondition(condition: string, level: LevelDefinition): { va
 
   const comparison = trimmed.match(/^(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)$/);
   if (comparison) {
-    const left = resolveConditionOperand(comparison[1], level);
+    const left = resolveNumericExpression(comparison[1], level, locals);
     if (left.error || left.value === undefined) {
       return { error: left.error ?? 'Unable to resolve left operand' };
     }
 
-    const right = resolveConditionOperand(comparison[3], level);
+    const right = resolveNumericExpression(comparison[3], level, locals);
     if (right.error || right.value === undefined) {
       return { error: right.error ?? 'Unable to resolve right operand' };
     }
@@ -200,7 +382,7 @@ function evaluateWhileCondition(condition: string, level: LevelDefinition): { va
     }
   }
 
-  const operand = resolveConditionOperand(trimmed, level);
+  const operand = resolveNumericExpression(trimmed, level, locals);
   if (operand.error || operand.value === undefined) {
     return { error: operand.error ?? `Unsupported while condition "${trimmed}"` };
   }
@@ -211,6 +393,19 @@ function evaluateWhileCondition(condition: string, level: LevelDefinition): { va
 interface ExpansionState {
   cursor: number;
   commands: ParsedCommand[];
+  locals: Record<string, number>;
+}
+
+function snapshotLocals(locals: Record<string, number>): string {
+  return JSON.stringify(locals, Object.keys(locals).sort());
+}
+
+function expressionReferencesLocals(expression: string, locals: Record<string, number>): boolean {
+  const localNames = Object.keys(locals);
+  return localNames.some((name) => {
+    const pattern = new RegExp(`\\b${name}\\b`);
+    return pattern.test(expression);
+  });
 }
 
 function executeStructuredStatements(
@@ -221,6 +416,39 @@ function executeStructuredStatements(
 ): CompileError | null {
   for (const statement of statements) {
     if (statement.type === 'line') {
+      if (statement.command.kind === 'turret.setAim') {
+        const xExpr = statement.command.xExpr ?? '';
+        const yExpr = statement.command.yExpr ?? '';
+        const shouldResolveLocals =
+          expressionReferencesLocals(xExpr, state.locals) || expressionReferencesLocals(yExpr, state.locals);
+
+        if (shouldResolveLocals) {
+          const xResult = resolveNumericExpression(xExpr, level, state.locals);
+          if (xResult.error || xResult.value === undefined) {
+            return {
+              line: statement.command.line,
+              message: `Invalid x expression: ${xResult.error ?? xExpr}`,
+            };
+          }
+
+          const yResult = resolveNumericExpression(yExpr, level, state.locals);
+          if (yResult.error || yResult.value === undefined) {
+            return {
+              line: statement.command.line,
+              message: `Invalid y expression: ${yResult.error ?? yExpr}`,
+            };
+          }
+
+          const rewritten: ParsedCommand = {
+            ...statement.command,
+            xExpr: String(xResult.value),
+            yExpr: String(yResult.value),
+          };
+          state.commands.push(rewritten);
+          continue;
+        }
+      }
+
       state.commands.push(statement.command);
       if (statement.command.kind === 'wait') {
         state.cursor += statement.command.value ?? 0;
@@ -228,7 +456,77 @@ function executeStructuredStatements(
       continue;
     }
 
-    const condition = evaluateWhileCondition(statement.condition, level);
+    if (statement.type === 'assign') {
+      const result = resolveNumericExpression(statement.expression, level, state.locals);
+      if (result.error || result.value === undefined) {
+        return {
+          line: statement.line,
+          message: `Invalid assignment expression: ${result.error ?? statement.expression}`,
+        };
+      }
+      state.locals[statement.variable] = result.value;
+      continue;
+    }
+
+    if (statement.type === 'increment') {
+      const current = state.locals[statement.variable] ?? 0;
+      state.locals[statement.variable] = current + 1;
+      continue;
+    }
+
+    if (statement.type === 'if') {
+      const condition = evaluateCondition(statement.condition, level, state.locals);
+      if (condition.error || condition.value === undefined) {
+        return {
+          line: statement.line,
+          message: `Invalid if condition: ${condition.error ?? statement.condition}`,
+        };
+      }
+
+      if (!condition.value) {
+        continue;
+      }
+
+      const innerError = executeStructuredStatements(statement.body, level, effectiveTickLimit, state);
+      if (innerError) {
+        return innerError;
+      }
+      continue;
+    }
+
+    if (statement.type === 'loop') {
+      const countResult = resolveNumericExpression(statement.countExpr, level, state.locals);
+      if (countResult.error || countResult.value === undefined) {
+        return {
+          line: statement.line,
+          message: `Invalid loop count expression: ${countResult.error ?? statement.countExpr}`,
+        };
+      }
+
+      if (!Number.isFinite(countResult.value) || countResult.value < 0 || !Number.isInteger(countResult.value)) {
+        return {
+          line: statement.line,
+          message: `loop(count) requires a non-negative integer, received ${countResult.value}`,
+        };
+      }
+
+      if (countResult.value > MAX_WHILE_ITERATIONS) {
+        return {
+          line: statement.line,
+          message: `loop(count) exceeded max iteration budget (${MAX_WHILE_ITERATIONS})`,
+        };
+      }
+
+      for (let idx = 0; idx < countResult.value; idx += 1) {
+        const innerError = executeStructuredStatements(statement.body, level, effectiveTickLimit, state);
+        if (innerError) {
+          return innerError;
+        }
+      }
+      continue;
+    }
+
+    const condition = evaluateCondition(statement.condition, level, state.locals);
     if (condition.error || condition.value === undefined) {
       return {
         line: statement.line,
@@ -250,8 +548,20 @@ function executeStructuredStatements(
       }
       iterations += 1;
 
+      const conditionResult = evaluateCondition(statement.condition, level, state.locals);
+      if (conditionResult.error || conditionResult.value === undefined) {
+        return {
+          line: statement.line,
+          message: `Invalid while condition: ${conditionResult.error ?? statement.condition}`,
+        };
+      }
+      if (!conditionResult.value) {
+        break;
+      }
+
       const cursorBefore = state.cursor;
       const commandCountBefore = state.commands.length;
+      const localsBefore = snapshotLocals(state.locals);
       const bodyError = executeStructuredStatements(statement.body, level, effectiveTickLimit, state);
       if (bodyError) {
         return bodyError;
@@ -259,18 +569,19 @@ function executeStructuredStatements(
 
       const addedCommands = state.commands.length > commandCountBefore;
       const advancedTime = state.cursor > cursorBefore;
-      if (!addedCommands && !advancedTime) {
+      const localsChanged = localsBefore !== snapshotLocals(state.locals);
+
+      if (!addedCommands && !advancedTime && !localsChanged) {
         return {
           line: statement.line,
           message: 'while loop body cannot be empty',
         };
       }
 
-      if (!advancedTime) {
-        return {
-          line: statement.line,
-          message: 'while loop must advance time with wait(n)',
-        };
+      if (!advancedTime && !localsChanged) {
+        // Allow concise loops without explicit wait(n): advance by one tick implicitly.
+        state.commands.push(createImplicitWaitCommand(statement.line));
+        state.cursor += 1;
       }
     }
   }
@@ -291,6 +602,7 @@ function expandWithWhileLoops(
   const state: ExpansionState = {
     cursor: 0,
     commands: [],
+    locals: {},
   };
 
   const expansionError = executeStructuredStatements(structured.statements, level, effectiveTickLimit, state);

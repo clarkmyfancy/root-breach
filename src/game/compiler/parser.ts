@@ -1,5 +1,62 @@
 import type { CompileError, ParsedCommand } from './scriptTypes';
 
+function splitTopLevelArgs(source: string): string[] | null {
+  const args: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let idx = 0; idx < source.length; idx += 1) {
+    const ch = source[idx];
+    if (ch === '(' || ch === '[') {
+      depth += 1;
+      continue;
+    }
+    if (ch === ')' || ch === ']') {
+      depth -= 1;
+      if (depth < 0) {
+        return null;
+      }
+      continue;
+    }
+    if (ch === ',' && depth === 0) {
+      args.push(source.slice(start, idx).trim());
+      start = idx + 1;
+    }
+  }
+
+  if (depth !== 0) {
+    return null;
+  }
+
+  args.push(source.slice(start).trim());
+  return args;
+}
+
+function parseSetAim(raw: string, line: number): ParseLineResult | null {
+  const match = raw.match(/^setAim\((.*)\)$/);
+  if (!match) {
+    return null;
+  }
+
+  const inner = match[1].trim();
+  const args = splitTopLevelArgs(inner);
+  if (!args || args.length !== 2 || !args[0] || !args[1]) {
+    return {
+      error: { line, message: 'Invalid setAim syntax. Expected: setAim(xExpr, yExpr)' },
+    };
+  }
+
+  return {
+    command: {
+      line,
+      raw,
+      kind: 'turret.setAim',
+      xExpr: args[0],
+      yExpr: args[1],
+    },
+  };
+}
+
 const patterns: Array<{
   kind: ParsedCommand['kind'];
   regex: RegExp;
@@ -41,11 +98,6 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'turret.retarget', deviceId: m[1], targetId: m[2] }),
   },
   {
-    kind: 'turret.setAim',
-    regex: /^setAim\(\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
-    map: (m, line, raw) => ({ line, raw, kind: 'turret.setAim', xExpr: m[1].trim(), yExpr: m[2].trim() }),
-  },
-  {
     kind: 'device.tag',
     regex: /^device\("([A-Za-z0-9_:-]+)"\)\.tag\("([A-Za-z0-9_:-]+)"\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'device.tag', deviceId: m[1], textArg: m[2] }),
@@ -76,6 +128,11 @@ export function parseLine(rawLine: string, line: number): ParseLineResult {
   const raw = rawLine.trim();
   if (!raw || raw.startsWith('//') || raw.startsWith('#')) {
     return {};
+  }
+
+  const setAimParsed = parseSetAim(raw, line);
+  if (setAimParsed) {
+    return setAimParsed;
   }
 
   const pattern = patterns.find((item) => item.regex.test(raw));

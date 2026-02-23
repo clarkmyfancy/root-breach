@@ -132,6 +132,12 @@ export function TerminalPanel({
                 <code>while (condition) {'{ ... }'}</code> is supported.
               </div>
               <div>
+                Loops auto-advance if no explicit <code>wait(n)</code>.
+              </div>
+              <div>
+                Math works in expressions: <code>+ - * /</code>, <code>sqrt(...)</code>, and <code>guardPosX[numGuards-1]</code>.
+              </div>
+              <div>
                 <code>// comment</code> skips a line.
               </div>
             </div>

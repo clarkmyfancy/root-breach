@@ -459,7 +459,7 @@ textarea {
   background: #13161c;
   color: #58606d;
   padding: 0.55rem 0.35rem;
-  font-size: 1.9rem;
+  font-size: 1rem;
   line-height: 1.5;
   text-align: right;
   user-select: none;
@@ -471,7 +471,7 @@ textarea {
   min-height: 340px;
   background: #101215;
   color: #f8fafc;
-  font-size: 2.1rem;
+  font-size: 1.2rem;
   line-height: 1.5;
   padding: 0.55rem 0.6rem;
 }
@@ -492,7 +492,7 @@ textarea {
 }
 
 .turret-terminal-sidebar-title {
-  font-size: 1.35rem;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   color: #e5e7eb;
@@ -512,17 +512,17 @@ textarea {
   color: #f87171;
   font-weight: 700;
   margin-bottom: 0.2rem;
-  font-size: 1.2rem;
+  font-size: 0.95rem;
 }
 
 .turret-terminal-block {
-  font-size: 1.65rem;
+  font-size: 1rem;
   line-height: 1.28;
   margin-bottom: 1rem;
 }
 
 .turret-terminal-block-note {
-  font-size: 1.25rem;
+  font-size: 0.9rem;
 }
 
 .turret-terminal-gap {
@@ -530,7 +530,7 @@ textarea {
 }
 
 .turret-terminal-hints {
-  font-size: 1.5rem;
+  font-size: 1rem;
   line-height: 1.28;
   color: #e5e7eb;
 }

@@ -109,10 +109,7 @@ function resolveManualAimForTurret(
   const xResult = resolveAimExpression(turret.manualAimXExpr ?? '', context);
   const yResult = resolveAimExpression(turret.manualAimYExpr ?? '', context);
   if (xResult.error || yResult.error || xResult.value === undefined || yResult.value === undefined) {
-    if (turret.manualAimX === undefined || turret.manualAimX === null || turret.manualAimY === undefined || turret.manualAimY === null) {
-      return null;
-    }
-    return { x: turret.manualAimX, y: turret.manualAimY };
+    return null;
   }
 
   return {

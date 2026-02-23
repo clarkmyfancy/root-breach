@@ -1,8 +1,11 @@
 export type DeviceType = 'camera' | 'turret' | 'drone' | 'door' | 'alarm' | 'terminal';
 export type AlarmState = 'GREEN' | 'YELLOW' | 'RED';
 export type Facing = 'up' | 'down' | 'left' | 'right';
-export type MissionPhase = 'OBJECTIVE' | 'CLEANUP' | 'COMPLETE' | 'FAILED';
+export type MissionPhase = 'PLANNING' | 'OBJECTIVE' | 'CLEANUP' | 'COMPLETE' | 'FAILED';
 export type EvidenceSurface = 'NETFLOW' | 'AUTH' | 'DEVICE' | 'FILE_AUDIT' | 'ALARM' | 'PROCESS';
+export type NodeType = 'DEVICE' | 'AUTH' | 'FILE' | 'RECORD' | 'ROUTE' | 'SYSTEM';
+export type NodeAccessState = 'UNKNOWN' | 'VISIBLE' | 'SCANNED' | 'CONTROLLED';
+export type NodeRiskState = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export interface Point {
   x: number;
@@ -119,6 +122,8 @@ export interface TraceSource {
 export interface TraceState {
   progress: number;
   ratePerTick: number;
+  lockRisk: number;
+  confidenceAgainstOperator: number;
   sources: TraceSource[];
   lockedOn: boolean;
   thresholdEventsFired: number[];
@@ -145,6 +150,46 @@ export interface MissionObjectiveFlags {
   recordAltered: boolean;
   sabotageDone: boolean;
   frameSet: boolean;
+  exfilCommitted: boolean;
+}
+
+export interface NodeRuntimeState {
+  id: string;
+  nodeType: NodeType;
+  accessState: NodeAccessState;
+  riskState: NodeRiskState;
+  lastTouchedTick: number;
+  evidenceSurfacesTouched: EvidenceSurface[];
+}
+
+export interface AttributionReason {
+  label: string;
+  weight: number;
+}
+
+export interface AttributionResult {
+  suspectedActor: string;
+  confidence: number;
+  actorScores: Record<string, number>;
+  reasons: AttributionReason[];
+}
+
+export interface MissionRuleCheck {
+  id: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface MissionOutcomeState {
+  status: 'RUNNING' | 'SUCCESS' | 'FAILURE';
+  objectivePassed: boolean;
+  cleanupPassed: boolean;
+  tracePassed: boolean;
+  attributionPassed: boolean;
+  failedRules: string[];
+  finalTrace: number;
+  finalAttribution: AttributionResult;
+  ruleChecks: MissionRuleCheck[];
 }
 
 export interface MissionState {
@@ -155,7 +200,12 @@ export interface MissionState {
   cleanupDeadlineTick: number | null;
   trace: TraceState;
   evidence: EvidenceRecord[];
+  nodes: Record<string, NodeRuntimeState>;
+  attribution: AttributionResult;
+  outcome: MissionOutcomeState;
   attributionTarget: string | null;
+  identityState: string;
+  sessionRoute: string[];
   detectedAtLeastOnce: boolean;
   objectiveFlags: MissionObjectiveFlags;
 }

@@ -254,7 +254,11 @@ function ForensicsApp(): JSX.Element {
 
   return (
     <div className="desktop-forensics">
-      <ForensicsPanel evidence={currentFrame?.snapshot.evidence ?? []} />
+      <ForensicsPanel
+        evidence={currentFrame?.snapshot.evidence ?? []}
+        attribution={currentFrame?.snapshot.attribution}
+        ruleChecks={currentFrame?.snapshot.missionOutcome.ruleChecks ?? []}
+      />
       <EventLogPanel events={events} />
       <FailureSummaryPanel summary={failureSummary} />
     </div>
@@ -391,10 +395,22 @@ export function DesktopShell(): JSX.Element {
             </div>
             <div className="debrief-metrics">
               <span>Outcome: {debrief.outcome}</span>
+              <span>Objective: {debrief.objectivePassed ? 'pass' : 'fail'}</span>
+              <span>Cleanup: {debrief.cleanupPassed ? 'pass' : 'fail'}</span>
+              <span>Trace: {debrief.traceFinal.toFixed(1)} ({debrief.tracePassed ? 'pass' : 'fail'})</span>
+              <span>
+                Attribution: {debrief.attributionActor} ({(debrief.attributionConfidence * 100).toFixed(0)}%)
+              </span>
               <span>Payout: {debrief.payoutDelta}</span>
               <span>Rep: {debrief.repDelta >= 0 ? `+${debrief.repDelta}` : debrief.repDelta}</span>
               <span>Heat: {debrief.heatDelta >= 0 ? `+${debrief.heatDelta}` : debrief.heatDelta}</span>
             </div>
+            {debrief.failedRules.length ? (
+              <div className="muted">Failed rules: {debrief.failedRules.join(', ')}</div>
+            ) : null}
+            {debrief.failureReasons.length ? (
+              <div className="muted">Exposure causes: {debrief.failureReasons.join(', ')}</div>
+            ) : null}
             <button className="btn" onClick={acknowledgeDebrief}>
               Return to Contracts
             </button>

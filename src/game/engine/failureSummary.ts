@@ -23,6 +23,8 @@ function findBefore(events: EventRecord[], type: EventRecord['type'], tick: numb
 }
 
 export function buildFailureSummary(events: EventRecord[]): FailureSummary {
+  const lastAttribution = findLast(events, 'ATTRIBUTION_UPDATED');
+  const lastOutcomeUpdate = findLast(events, 'MISSION_OUTCOME_UPDATED');
   const traceMaxed = findLast(events, 'TRACE_MAXED');
   if (traceMaxed) {
     return {
@@ -33,6 +35,11 @@ export function buildFailureSummary(events: EventRecord[]): FailureSummary {
       cleanupStatus: findLast(events, 'CLEANUP_COMPLETED') ? 'complete' : 'failed',
       exposureCauses: ['Mission trace overflow'],
       attributionConclusion: String(traceMaxed.payload.attributedTo ?? 'OPERATOR'),
+      attributionConfidence: Number(lastAttribution?.payload.confidence ?? 0),
+      ruleFailures:
+        typeof lastOutcomeUpdate?.payload.failedRules === 'string' && lastOutcomeUpdate.payload.failedRules !== 'none'
+          ? String(lastOutcomeUpdate.payload.failedRules).split(',')
+          : [],
     };
   }
 
@@ -46,6 +53,11 @@ export function buildFailureSummary(events: EventRecord[]): FailureSummary {
       cleanupStatus: 'failed',
       exposureCauses: [String(cleanupFailed.payload.reason ?? 'unspecified')],
       attributionConclusion: String(cleanupFailed.payload.attributedTo ?? 'OPERATOR'),
+      attributionConfidence: Number(lastAttribution?.payload.confidence ?? 0),
+      ruleFailures:
+        typeof lastOutcomeUpdate?.payload.failedRules === 'string' && lastOutcomeUpdate.payload.failedRules !== 'none'
+          ? String(lastOutcomeUpdate.payload.failedRules).split(',')
+          : [],
     };
   }
 
@@ -101,6 +113,11 @@ export function buildFailureSummary(events: EventRecord[]): FailureSummary {
       suggestedFocus: 'Reduce waits and complete objective plus cleanup steps earlier',
       objectiveStatus: findLast(events, 'OBJECTIVE_COMPLETED') ? 'complete' : 'incomplete',
       cleanupStatus: findLast(events, 'CLEANUP_COMPLETED') ? 'complete' : 'pending',
+      attributionConfidence: Number(lastAttribution?.payload.confidence ?? 0),
+      ruleFailures:
+        typeof lastOutcomeUpdate?.payload.failedRules === 'string' && lastOutcomeUpdate.payload.failedRules !== 'none'
+          ? String(lastOutcomeUpdate.payload.failedRules).split(',')
+          : [],
     };
   }
 

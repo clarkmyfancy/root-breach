@@ -21,6 +21,8 @@ export interface MissionRules {
   forcedDetection?: boolean;
   targetFrameIdentity?: string;
   cleanupWindowTicks?: number;
+  traceTolerance?: number;
+  allowTraceOverflow?: boolean;
 }
 
 export interface ContractDefinition {

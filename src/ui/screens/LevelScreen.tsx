@@ -3,10 +3,12 @@ import { contractById } from '../../game/contracts';
 import { levelById } from '../../game/levels';
 import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
+import { ForensicsPanel } from '../panels/ForensicsPanel';
 import { InspectorPanel } from '../panels/InspectorPanel';
-import { MapPanel } from '../panels/MapPanel';
 import { ReplayControls } from '../panels/ReplayControls';
+import { SystemStackPanel } from '../panels/SystemStackPanel';
 import { TerminalPanel } from '../panels/TerminalPanel';
+import { TimelinePanel } from '../panels/TimelinePanel';
 import { TracePanel } from '../panels/TracePanel';
 import { WalkthroughPanel } from '../panels/WalkthroughPanel';
 import { useGameStore } from '../../store/useGameStore';
@@ -15,8 +17,8 @@ type WalkthroughTarget = 'map' | 'terminalInput' | 'compileButton' | 'eventLog';
 
 const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: WalkthroughTarget }> = [
   {
-    title: 'Read The Map And Core Loop',
-    body: 'Your agent auto-runs this route. The loop is: fail, inspect what happened, patch script, replay from tick 0.',
+    title: 'Read System Stack And Core Loop',
+    body: 'This mission is system-state driven. The loop is: fail, inspect logs/forensics, patch script, replay from tick 0.',
     target: 'map',
   },
   {
@@ -61,7 +63,6 @@ export function LevelScreen(): JSX.Element {
   const toggleReplayPlaying = useGameStore((state) => state.toggleReplayPlaying);
   const resetReplay = useGameStore((state) => state.resetReplay);
   const setReplaySpeed = useGameStore((state) => state.setReplaySpeed);
-  const selectDevice = useGameStore((state) => state.selectDevice);
   const nextWalkthroughStep = useGameStore((state) => state.nextWalkthroughStep);
   const prevWalkthroughStep = useGameStore((state) => state.prevWalkthroughStep);
   const dismissWalkthrough = useGameStore((state) => state.dismissWalkthrough);
@@ -82,6 +83,10 @@ export function LevelScreen(): JSX.Element {
   const contract = currentContractId ? contractById[currentContractId] : null;
   const currentFrame = replayResult?.frames[Math.min(frameIndex, Math.max(0, (replayResult?.frames.length ?? 1) - 1))] ?? null;
   const tick = currentFrame?.tick ?? 0;
+  const missionPhase = currentFrame?.snapshot.missionPhase ?? 'PLANNING';
+  const objectiveStatus = currentFrame?.snapshot.missionOutcome.objectivePassed ? 'complete' : 'incomplete';
+  const cleanupStatus = currentFrame?.snapshot.missionOutcome.cleanupPassed ? 'complete' : 'pending';
+  const alarmState = currentFrame?.snapshot.alarmState ?? 'GREEN';
 
   const visibleEvents = useMemo(() => {
     if (!replayResult || !currentFrame) {
@@ -101,7 +106,11 @@ export function LevelScreen(): JSX.Element {
     );
   }
 
-  const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
+  const selectedDevice = currentFrame
+    ? selectedDeviceId
+      ? currentFrame.snapshot.devices[selectedDeviceId] ?? null
+      : Object.values(currentFrame.snapshot.devices)[0] ?? null
+    : null;
   const walkthroughStepData =
     walkthroughActive && level.id === 'level1' ? levelOneWalkthroughSteps[walkthroughStep] : null;
   const walkthroughPosition =
@@ -131,11 +140,25 @@ export function LevelScreen(): JSX.Element {
       <header className="level-header">
         <div>
           <h2>{contract?.title ?? level.name}</h2>
-          {contract ? <div className="muted">Client: {contract.clientCodename}</div> : null}
-          <div className="muted">Phase: {phase}</div>
+          <div className="level-header__status">
+            {contract ? <span>Client: {contract.clientCodename}</span> : null}
+            <span>Mission Phase: {missionPhase}</span>
+            <span>Objective: {objectiveStatus}</span>
+            <span>Cleanup: {cleanupStatus}</span>
+            <span>Trace: {(currentFrame?.snapshot.traceProgress ?? 0).toFixed(1)}%</span>
+            <span>Alarm: {alarmState}</span>
+            <span>Tick: {tick}</span>
+            <span>UI Phase: {phase}</span>
+          </div>
         </div>
 
         <div className="level-header__actions">
+          <button className="btn" onClick={compileCurrentScript}>
+            Compile
+          </button>
+          <button className="btn btn-primary" onClick={runReplay}>
+            Run
+          </button>
           <button className="btn" onClick={openLevelSelect}>
             Contract Board
           </button>
@@ -144,15 +167,7 @@ export function LevelScreen(): JSX.Element {
 
       <div className="level-grid-layout">
         <div className="left-pane">
-          <MapPanel
-            level={level}
-            snapshot={currentFrame?.snapshot ?? null}
-            frameEvents={currentFrame?.events ?? []}
-            tick={tick}
-            selectedDeviceId={selectedDeviceId}
-            onSelectDevice={selectDevice}
-            highlighted={walkthroughStepData?.target === 'map'}
-          />
+          <SystemStackPanel nodes={currentFrame?.snapshot.missionNodes ?? {}} />
 
           <ReplayControls
             tick={tick}
@@ -169,7 +184,15 @@ export function LevelScreen(): JSX.Element {
             progress={currentFrame?.snapshot.traceProgress ?? 0}
             ratePerTick={currentFrame?.snapshot.traceRatePerTick ?? 0}
             lockedOn={currentFrame?.snapshot.traceLockedOn ?? false}
+            lockRisk={currentFrame?.snapshot.traceLockRisk ?? 0}
+            confidenceAgainstOperator={currentFrame?.snapshot.traceConfidenceAgainstOperator ?? 0}
             sources={currentFrame?.snapshot.traceSources ?? []}
+          />
+
+          <TimelinePanel
+            tick={tick}
+            tickLimit={replayResult?.tickLimit ?? 0}
+            events={visibleEvents}
           />
 
           <div ref={eventLogAnchorRef}>
@@ -194,7 +217,14 @@ export function LevelScreen(): JSX.Element {
           {phase === 'debrief' && lastOutcome === 'failure' ? (
             <FailureSummaryPanel summary={failureSummary} />
           ) : (
-            <InspectorPanel device={selectedDevice} />
+            <>
+              <ForensicsPanel
+                evidence={currentFrame?.snapshot.evidence ?? []}
+                attribution={currentFrame?.snapshot.attribution}
+                ruleChecks={currentFrame?.snapshot.missionOutcome.ruleChecks ?? []}
+              />
+              <InspectorPanel device={selectedDevice} />
+            </>
           )}
         </div>
       </div>

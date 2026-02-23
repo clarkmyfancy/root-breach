@@ -40,6 +40,8 @@ const apiReference = [
   'logs("NETFLOW").forge("competitor_sig")',
   'logs("DEVICE").overwrite("CAM_2")',
   'evidence().frame("SCAPEGOAT_ID")',
+  'identity().assume("maintenance")',
+  'narrative.ticket("WO-4412","coolant_audit")',
   'wait(5)',
   'log("message")',
 ];

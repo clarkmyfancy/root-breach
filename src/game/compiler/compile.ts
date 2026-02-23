@@ -64,7 +64,8 @@ export function compileScript(source: string, level: LevelDefinition, options: C
   }
 
   if (options.contract) {
-    const cleanupStartTickHint = Math.max(1, level.playerPath.length - 1);
+    const cleanupWindow = options.contract.missionRules.cleanupWindowTicks ?? Math.max(8, Math.floor(effectiveTickLimit * 0.3));
+    const cleanupStartTickHint = Math.max(1, Math.min(12, effectiveTickLimit - cleanupWindow));
     const phaseErrors = validateCleanupPhaseLegality(scheduled, cleanupStartTickHint);
     if (phaseErrors.length) {
       return {

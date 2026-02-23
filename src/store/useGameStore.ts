@@ -30,9 +30,17 @@ export interface DebriefState {
   contractTitle: string;
   clientCodename: string;
   outcome: 'success' | 'failure';
+  objectivePassed: boolean;
+  cleanupPassed: boolean;
+  traceFinal: number;
+  tracePassed: boolean;
+  attributionActor: string;
+  attributionConfidence: number;
+  failedRules: string[];
   payoutDelta: number;
   repDelta: number;
   heatDelta: number;
+  failureReasons: string[];
 }
 
 interface GameStore {
@@ -487,6 +495,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const outcome: 'success' | 'failure' = result.outcome === 'success' ? 'success' : 'failure';
     const nextSave = withContractOutcome(state.save, contracts, contract, outcome, state.scriptText);
     persistSaveData(nextSave);
+    const finalFrame = result.frames[lastIndex];
+    const missionOutcome = finalFrame?.snapshot.missionOutcome ?? result.missionOutcome;
+    const failureReasons =
+      result.failureSummary?.exposureCauses && result.failureSummary.exposureCauses.length > 0
+        ? result.failureSummary.exposureCauses
+        : missionOutcome.failedRules;
 
     set({
       frameIndex: nextIndex,
@@ -501,9 +515,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
         contractTitle: contract.title,
         clientCodename: contract.clientCodename,
         outcome,
+        objectivePassed: missionOutcome.objectivePassed,
+        cleanupPassed: missionOutcome.cleanupPassed,
+        traceFinal: missionOutcome.finalTrace,
+        tracePassed: missionOutcome.tracePassed,
+        attributionActor: missionOutcome.finalAttribution.suspectedActor,
+        attributionConfidence: missionOutcome.finalAttribution.confidence,
+        failedRules: missionOutcome.failedRules,
         payoutDelta: outcome === 'success' ? contract.payout : 0,
         repDelta: outcome === 'success' ? contract.repReward : 0,
         heatDelta: outcome === 'success' ? 0 : contract.heatPenaltyOnFail,
+        failureReasons,
       },
     });
   },

@@ -41,7 +41,18 @@ export function FailureSummaryPanel({ summary }: FailureSummaryPanelProps): JSX.
       {summary.attributionConclusion ? (
         <p>
           <strong>Attribution:</strong> {summary.attributionConclusion}
+          {summary.attributionConfidence !== undefined ? ` (${(summary.attributionConfidence * 100).toFixed(0)}%)` : ''}
         </p>
+      ) : null}
+      {summary.ruleFailures?.length ? (
+        <div>
+          <strong>Failed rules:</strong>
+          <ul>
+            {summary.ruleFailures.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       {summary.exposureCauses?.length ? (
         <div>

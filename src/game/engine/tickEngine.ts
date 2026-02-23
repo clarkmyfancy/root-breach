@@ -2,6 +2,8 @@ import type { CompiledCommand } from '../compiler/scriptTypes';
 import { createInitialSimulationState } from '../models/state';
 import type {
   AlarmDevice,
+  AttributionReason,
+  AttributionResult,
   CameraDevice,
   Device,
   DoorDevice,
@@ -14,7 +16,7 @@ import type {
 } from '../models/types';
 import { buildFailureSummary } from './failureSummary';
 import { GLOBAL_TICK_LIMIT } from './constants';
-import type { EventCategory, EventRecord, EventType, SimulationResult } from './eventTypes';
+import type { EventCategory, EventRecord, EventType, LegacyEventCategory, SimulationResult } from './eventTypes';
 import { buildFrame } from './replayRecorder';
 import type { MissionConfig } from './missionTypes';
 
@@ -39,10 +41,212 @@ interface TickContext {
   noisyScriptActionsThisTick: number;
 }
 
+function toEventCategory(type: EventType, legacyCategory: LegacyEventCategory): EventCategory {
+  const fromType: Partial<Record<EventType, EventCategory>> = {
+    SCRIPT_LINE_EXECUTED: 'COMMAND',
+    LOG: 'COMMAND',
+    RUN_TIMEOUT: 'FAILURE',
+    TRACE_UPDATED: 'TRACE',
+    TRACE_THRESHOLD_REACHED: 'TRACE',
+    TRACE_MAXED: 'FAILURE',
+    OBJECTIVE_PROGRESS: 'OBJECTIVE',
+    OBJECTIVE_COMPLETED: 'OBJECTIVE',
+    CLEANUP_COMPLETED: 'CLEANUP',
+    CLEANUP_FAILED: 'CLEANUP',
+    MISSION_PHASE_CHANGED: 'OBJECTIVE',
+    ATTRIBUTION_UPDATED: 'ATTRIBUTION',
+    MISSION_OUTCOME_UPDATED: 'ATTRIBUTION',
+    EVIDENCE_LOGGED: 'PROCESS',
+    EVIDENCE_ATTRIBUTION_SHIFTED: 'ATTRIBUTION',
+    LOGS_SCRUBBED: 'CLEANUP',
+    LOGS_FORGED: 'CLEANUP',
+    LOGS_OVERWRITTEN: 'CLEANUP',
+    EVIDENCE_FRAME_SET: 'ATTRIBUTION',
+    CAMERA_DETECTED_PLAYER: 'ALARM',
+    ALARM_STATE_CHANGED: 'ALARM',
+    ALARM_DELAY_APPLIED: 'ALARM',
+    ACCESS_BYPASS_APPLIED: 'AUTH',
+    ACCESS_SPOOF_APPLIED: 'AUTH',
+    ACCESS_TOKEN_REPLAYED: 'AUTH',
+    FILE_COPIED: 'FILE',
+    FILE_DELETED: 'FILE',
+    RECORD_ALTERED: 'FILE',
+    ROUTE_SCANNED: 'NETFLOW',
+    ROUTE_RELAY_APPLIED: 'NETFLOW',
+    ROUTE_AGENT_SELECTED: 'NETFLOW',
+    TRACE_SPOOFED: 'NETFLOW',
+    DECOY_BURST_APPLIED: 'NETFLOW',
+    DEVICE_SCANNED: 'DEVICE',
+    NODE_SCANNED: 'PROCESS',
+    DEVICE_DISABLED: 'DEVICE',
+    DEVICE_ENABLED: 'DEVICE',
+    DEVICE_TAGGED: 'DEVICE',
+    DEVICE_SABOTAGED: 'DEVICE',
+    TURRET_RETARGETED: 'DEVICE',
+    DOOR_OPENED: 'DEVICE',
+    DOOR_CLOSED: 'DEVICE',
+    TURRET_TARGET_LOCK: 'ALARM',
+    TURRET_FIRED: 'ALARM',
+    PLAYER_BLOCKED_BY_DOOR: 'FAILURE',
+    PLAYER_KILLED: 'FAILURE',
+    PLAYER_REACHED_EXIT: 'OBJECTIVE',
+    DRONE_DESTROYED: 'DEVICE',
+    LOG_SURFACE_PROBED: 'PROCESS',
+  };
+  if (fromType[type]) {
+    return fromType[type] as EventCategory;
+  }
+
+  const fromLegacy: Record<LegacyEventCategory, EventCategory> = {
+    script: 'COMMAND',
+    detection: 'ALARM',
+    alarm: 'ALARM',
+    combat: 'FAILURE',
+    movement: 'OBJECTIVE',
+    system: 'PROCESS',
+    trace: 'TRACE',
+    evidence: 'PROCESS',
+    objective: 'OBJECTIVE',
+    mission: 'CLEANUP',
+  };
+  return fromLegacy[legacyCategory];
+}
+
+function messageForEvent(type: EventType, payload: Record<string, string | number | boolean | null>): string {
+  switch (type) {
+    case 'SCRIPT_LINE_EXECUTED':
+      return `line ${payload.line} executed (${payload.kind})`;
+    case 'CAMERA_DETECTED_PLAYER':
+      return `${payload.cameraId} detected player`;
+    case 'ALARM_STATE_CHANGED':
+      return `Alarm ${payload.from} -> ${payload.to}`;
+    case 'DEVICE_DISABLED':
+      return `Disabled ${payload.deviceId}`;
+    case 'DEVICE_ENABLED':
+      return `Enabled ${payload.deviceId}`;
+    case 'DOOR_OPENED':
+      return `Door ${payload.doorId} opened`;
+    case 'DOOR_CLOSED':
+      return `Door ${payload.doorId} closed`;
+    case 'ALARM_DELAY_APPLIED':
+      return `Alarm delayed by ${payload.amount} ticks`;
+    case 'TRACE_UPDATED':
+      return `Trace ${payload.progress}% (${payload.delta}/tick)`;
+    case 'TRACE_THRESHOLD_REACHED':
+      return `Trace threshold ${payload.threshold}% reached`;
+    case 'TRACE_MAXED':
+      return 'Trace maxed out';
+    case 'OBJECTIVE_PROGRESS':
+      return `Objective progress ${payload.objectiveKey}`;
+    case 'OBJECTIVE_COMPLETED':
+      return 'Objective completed';
+    case 'CLEANUP_COMPLETED':
+      return 'Cleanup completed';
+    case 'CLEANUP_FAILED':
+      return `Cleanup failed (${payload.reason})`;
+    case 'MISSION_PHASE_CHANGED':
+      return `Mission phase ${payload.from} -> ${payload.to}`;
+    case 'ATTRIBUTION_UPDATED':
+      return `Attribution: ${payload.suspectedActor} (${payload.confidence})`;
+    case 'MISSION_OUTCOME_UPDATED':
+      return `Rule checks: ${payload.failedRules ?? 'none failed'}`;
+    case 'LOGS_SCRUBBED':
+      return `Logs scrubbed ${payload.surface} (${payload.count})`;
+    case 'LOGS_FORGED':
+      return `Logs forged ${payload.surface}`;
+    case 'LOGS_OVERWRITTEN':
+      return `Logs overwritten ${payload.surface} (${payload.count})`;
+    case 'EVIDENCE_FRAME_SET':
+      return `Frame target set ${payload.target}`;
+    case 'EVIDENCE_ATTRIBUTION_SHIFTED':
+      return `Attribution shifted to ${payload.target}`;
+    case 'EVIDENCE_LOGGED':
+      return `Evidence ${payload.surface} at ${payload.siteNodeId}`;
+    case 'RUN_TIMEOUT':
+      return 'Run timed out';
+    case 'LOG':
+      return String(payload.message ?? '');
+    default:
+      return type;
+  }
+}
+
+function resolveEventTarget(payload: Record<string, string | number | boolean | null>): string {
+  const keys = [
+    'deviceId',
+    'doorId',
+    'cameraId',
+    'turretId',
+    'targetId',
+    'nodeId',
+    'siteNodeId',
+    'fileId',
+    'recordId',
+    'authId',
+    'target',
+  ];
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+  return '';
+}
+
+function resolveTraceImpact(type: EventType, payload: Record<string, string | number | boolean | null>): number {
+  if (type === 'TRACE_UPDATED' && typeof payload.delta === 'number') {
+    return Number(payload.delta);
+  }
+  return 0;
+}
+
+function resolveEvidenceImpact(
+  type: EventType,
+  payload: Record<string, string | number | boolean | null>,
+): EventRecord['evidenceImpact'] {
+  if (type === 'EVIDENCE_LOGGED') {
+    return {
+      surface: String(payload.surface ?? 'PROCESS'),
+      action: 'ADD',
+      count: 1,
+    };
+  }
+  if (type === 'LOGS_SCRUBBED') {
+    return {
+      surface: String(payload.surface ?? 'PROCESS'),
+      action: 'SCRUB',
+      count: Number(payload.count ?? 0),
+    };
+  }
+  if (type === 'LOGS_FORGED') {
+    return {
+      surface: String(payload.surface ?? 'PROCESS'),
+      action: 'FORGE',
+      count: 1,
+    };
+  }
+  if (type === 'LOGS_OVERWRITTEN') {
+    return {
+      surface: String(payload.surface ?? 'PROCESS'),
+      action: 'OVERWRITE',
+      count: Number(payload.count ?? 0),
+    };
+  }
+  if (type === 'EVIDENCE_ATTRIBUTION_SHIFTED') {
+    return {
+      surface: 'PROCESS',
+      action: 'SHIFT',
+      count: Number(payload.count ?? 0),
+    };
+  }
+  return null;
+}
+
 function emit(
   ctx: TickContext,
   type: EventType,
-  category: EventCategory,
+  legacyCategory: LegacyEventCategory,
   payload: Record<string, string | number | boolean | null>,
   line?: number,
 ): void {
@@ -50,7 +254,12 @@ function emit(
     id: ctx.nextEventId,
     tick: ctx.state.tick,
     type,
-    category,
+    category: toEventCategory(type, legacyCategory),
+    legacyCategory,
+    message: messageForEvent(type, payload),
+    target: resolveEventTarget(payload),
+    traceImpact: resolveTraceImpact(type, payload),
+    evidenceImpact: resolveEvidenceImpact(type, payload),
     payload,
     line,
   };
@@ -157,6 +366,7 @@ function recordEvidence(
     forged: options.forged ?? false,
   };
   ctx.state.mission.evidence.push(record);
+  markNodeEvidence(ctx, siteNodeId, surface, severity);
   emit(ctx, 'EVIDENCE_LOGGED', 'evidence', {
     evidenceId,
     surface,
@@ -225,6 +435,250 @@ function trackObjectiveProgress(ctx: TickContext, key: keyof SimulationState['mi
   emit(ctx, 'OBJECTIVE_PROGRESS', 'objective', { objectiveKey: key, completed: true });
 }
 
+function touchMissionNode(
+  ctx: TickContext,
+  id: string,
+  updates: Partial<SimulationState['mission']['nodes'][string]> = {},
+): void {
+  if (!isMissionMode(ctx)) {
+    return;
+  }
+  const existing = ctx.state.mission.nodes[id];
+  if (!existing) {
+    ctx.state.mission.nodes[id] = {
+      id,
+      nodeType: 'SYSTEM',
+      accessState: 'VISIBLE',
+      riskState: 'LOW',
+      lastTouchedTick: ctx.state.tick,
+      evidenceSurfacesTouched: [],
+      ...updates,
+    };
+    return;
+  }
+  ctx.state.mission.nodes[id] = {
+    ...existing,
+    ...updates,
+    evidenceSurfacesTouched: updates.evidenceSurfacesTouched ?? existing.evidenceSurfacesTouched,
+    lastTouchedTick: ctx.state.tick,
+  };
+}
+
+function markNodeEvidence(ctx: TickContext, siteNodeId: string, surface: EvidenceSurface, severity: 1 | 2 | 3): void {
+  if (!isMissionMode(ctx)) {
+    return;
+  }
+  const existing = ctx.state.mission.nodes[siteNodeId];
+  const nextSurfaces = existing
+    ? existing.evidenceSurfacesTouched.includes(surface)
+      ? existing.evidenceSurfacesTouched
+      : [...existing.evidenceSurfacesTouched, surface]
+    : [surface];
+  const riskState = severity >= 3 ? 'CRITICAL' : severity === 2 ? 'HIGH' : 'MEDIUM';
+  touchMissionNode(ctx, siteNodeId, {
+    accessState: 'SCANNED',
+    riskState,
+    evidenceSurfacesTouched: nextSurfaces,
+  });
+}
+
+function weightBySurface(surface: EvidenceSurface): number {
+  switch (surface) {
+    case 'AUTH':
+      return 1.3;
+    case 'PROCESS':
+      return 1.2;
+    case 'ALARM':
+      return 1.15;
+    case 'FILE_AUDIT':
+      return 1.1;
+    case 'DEVICE':
+      return 1;
+    case 'NETFLOW':
+    default:
+      return 0.9;
+  }
+}
+
+function recalculateAttribution(ctx: TickContext): void {
+  if (!isMissionMode(ctx)) {
+    return;
+  }
+  const contract = ctx.missionConfig?.contract;
+  const candidates = new Set<string>(['OPERATOR', 'UNKNOWN']);
+  for (const evidence of ctx.state.mission.evidence) {
+    candidates.add(evidence.attributedTo ?? 'OPERATOR');
+  }
+  if (contract?.missionRules.targetFrameIdentity) {
+    candidates.add(contract.missionRules.targetFrameIdentity);
+  }
+  for (const target of contract?.frameTargets ?? []) {
+    candidates.add(target);
+  }
+
+  const actorScores: Record<string, number> = {};
+  for (const actor of candidates) {
+    actorScores[actor] = 0;
+  }
+  const reasonBuckets = new Map<string, number>();
+  const unsanitized = ctx.state.mission.evidence.filter((record) => !record.scrubbed);
+  for (const record of unsanitized) {
+    const actor = record.attributedTo ?? 'OPERATOR';
+    const base = record.severity * weightBySurface(record.surface);
+    const forgedBoost = record.forged ? 0.8 : 0;
+    const visibilityMultiplier = record.hidden ? 0.45 : 1;
+    const score = (base + forgedBoost) * visibilityMultiplier;
+    actorScores[actor] = (actorScores[actor] ?? 0) + score;
+
+    const reasonKey = `${record.surface}${record.forged ? ' forged' : ''}`;
+    reasonBuckets.set(reasonKey, (reasonBuckets.get(reasonKey) ?? 0) + score);
+  }
+
+  const ranked = Object.entries(actorScores).sort((a, b) => b[1] - a[1]);
+  const [topActor, topScore] = ranked[0] ?? ['UNKNOWN', 0];
+  const secondScore = ranked[1]?.[1] ?? 0;
+  const total = ranked.reduce((sum, [, score]) => sum + score, 0);
+  const confidence = total <= 0 ? 0 : Number((topScore / (topScore + secondScore + 0.0001)).toFixed(2));
+  const reasons: AttributionReason[] = Array.from(reasonBuckets.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([label, weight]) => ({ label, weight: Number(weight.toFixed(2)) }));
+
+  const previous = ctx.state.mission.attribution;
+  const next: AttributionResult = {
+    suspectedActor: topActor,
+    confidence,
+    actorScores,
+    reasons,
+  };
+  ctx.state.mission.attribution = next;
+  ctx.state.mission.trace.confidenceAgainstOperator = Number(((actorScores.OPERATOR ?? 0) / (total || 1)).toFixed(2));
+
+  const actorChanged = previous.suspectedActor !== next.suspectedActor;
+  const confidenceDelta = Math.abs(previous.confidence - next.confidence);
+  if (actorChanged || confidenceDelta >= 0.1) {
+    emit(ctx, 'ATTRIBUTION_UPDATED', 'mission', {
+      suspectedActor: next.suspectedActor,
+      confidence: next.confidence,
+    });
+  }
+}
+
+function evaluateMissionOutcome(ctx: TickContext): void {
+  if (!isMissionMode(ctx)) {
+    return;
+  }
+  const contract = ctx.missionConfig?.contract;
+  const traceValue = ctx.state.mission.trace.progress;
+  const objectivePassed = ctx.state.mission.objectiveCompleted;
+  const cleanupRequired = ctx.state.mission.cleanupRequired;
+  const cleanupPassed = cleanupRequired ? ctx.state.mission.cleanupCompleted : true;
+  const attribution = ctx.state.mission.attribution;
+  const noTraceRule = Boolean(contract?.missionRules.requireNoTrace);
+  const frameRule = Boolean(contract?.missionRules.allowFrameTarget);
+  const forcedDetectionRule = Boolean(contract?.missionRules.forcedDetection);
+  const allowTraceOverflow = Boolean(contract?.missionRules.allowTraceOverflow);
+  const traceTolerance = contract?.missionRules.traceTolerance ?? (noTraceRule ? 40 : 100);
+  const frameTarget = contract?.missionRules.targetFrameIdentity || ctx.state.mission.attributionTarget || '';
+
+  const checks = [
+    {
+      id: 'objective',
+      passed: objectivePassed,
+      detail: objectivePassed ? 'Objective completed.' : 'Objective incomplete.',
+    },
+    {
+      id: 'trace_hard_limit',
+      passed: allowTraceOverflow || traceValue < 100,
+      detail: allowTraceOverflow
+        ? 'Trace overflow allowed by contract.'
+        : traceValue < 100
+          ? 'Trace below max threshold.'
+          : 'Trace reached hard failure threshold.',
+    },
+    {
+      id: 'cleanup',
+      passed: cleanupPassed,
+      detail: cleanupRequired
+        ? cleanupPassed
+          ? 'Cleanup requirements satisfied.'
+          : 'Cleanup still incomplete.'
+        : 'Cleanup not required for this contract.',
+    },
+    {
+      id: 'no_trace_rule',
+      passed: !noTraceRule || traceValue < traceTolerance,
+      detail: !noTraceRule
+        ? 'No-trace rule not active.'
+        : traceValue < traceTolerance
+          ? 'No-trace threshold satisfied.'
+          : 'Trace above no-trace threshold.',
+    },
+    {
+      id: 'frame_rule',
+      passed: !frameRule || (attribution.suspectedActor === frameTarget && attribution.confidence >= 0.6),
+      detail: !frameRule
+        ? 'Framing rule not active.'
+        : attribution.suspectedActor === frameTarget && attribution.confidence >= 0.6
+          ? `Frame target matched (${frameTarget}) with confidence ${attribution.confidence}.`
+          : `Framing mismatch. Expected ${frameTarget}, saw ${attribution.suspectedActor} @ ${attribution.confidence}.`,
+    },
+    {
+      id: 'forced_detection_rule',
+      passed: !forcedDetectionRule || ctx.state.mission.detectedAtLeastOnce,
+      detail: !forcedDetectionRule
+        ? 'Forced detection rule not active.'
+        : ctx.state.mission.detectedAtLeastOnce
+          ? 'Forced detection achieved.'
+          : 'Forced detection was never triggered.',
+    },
+    {
+      id: 'loud_diversion_attribution_rule',
+      passed: !forcedDetectionRule || frameRule || attribution.suspectedActor !== 'OPERATOR' || attribution.confidence < 0.6,
+      detail:
+        !forcedDetectionRule || frameRule
+          ? 'Diversion attribution rule not active.'
+          : attribution.suspectedActor !== 'OPERATOR' || attribution.confidence < 0.6
+            ? 'Detection occurred without conclusive operator attribution.'
+            : 'Detection linked back to operator with high confidence.',
+    },
+  ];
+
+  const failedRules = checks.filter((check) => !check.passed).map((check) => check.id);
+  const tracePassed =
+    (checks.find((check) => check.id === 'trace_hard_limit')?.passed ?? true) &&
+    (checks.find((check) => check.id === 'no_trace_rule')?.passed ?? true);
+  const attributionPassed =
+    (checks.find((check) => check.id === 'frame_rule')?.passed ?? true) &&
+    (checks.find((check) => check.id === 'loud_diversion_attribution_rule')?.passed ?? true);
+  const status =
+    ctx.state.outcome === 'success'
+      ? 'SUCCESS'
+      : ctx.state.outcome === 'failure'
+        ? 'FAILURE'
+        : 'RUNNING';
+
+  const previousFailures = ctx.state.mission.outcome.failedRules.join('|');
+  const nextFailures = failedRules.join('|');
+  ctx.state.mission.outcome = {
+    status,
+    objectivePassed,
+    cleanupPassed,
+    tracePassed,
+    attributionPassed,
+    failedRules,
+    finalTrace: Number(traceValue.toFixed(2)),
+    finalAttribution: attribution,
+    ruleChecks: checks,
+  };
+
+  if (previousFailures !== nextFailures) {
+    emit(ctx, 'MISSION_OUTCOME_UPDATED', 'mission', {
+      failedRules: failedRules.length ? failedRules.join(',') : 'none',
+    });
+  }
+}
+
 function applyScheduledScriptActions(ctx: TickContext): void {
   const commands = ctx.commandsByTick.get(ctx.state.tick) ?? [];
   const contract = ctx.missionConfig?.contract;
@@ -245,9 +699,15 @@ function applyScheduledScriptActions(ctx: TickContext): void {
 
     switch (command.kind) {
       case 'scan.node':
+        if (command.targetId) {
+          touchMissionNode(ctx, command.targetId, { accessState: 'SCANNED' });
+        }
         emit(ctx, 'NODE_SCANNED', 'script', { nodeId: command.targetId ?? null }, command.line);
         break;
       case 'scan.device':
+        if (command.deviceId) {
+          touchMissionNode(ctx, command.deviceId, { accessState: 'SCANNED', nodeType: 'DEVICE' });
+        }
         emit(ctx, 'DEVICE_SCANNED', 'script', { deviceId: command.deviceId ?? null }, command.line);
         break;
       case 'scan.route':
@@ -262,7 +722,9 @@ function applyScheduledScriptActions(ctx: TickContext): void {
           break;
         }
         door.isOpen = true;
+        touchMissionNode(ctx, door.id, { accessState: 'CONTROLLED', nodeType: 'DEVICE' });
         markNoisyAction(ctx);
+        ctx.state.mission.objectiveFlags.exfilCommitted = true;
         emit(ctx, 'ACCESS_BYPASS_APPLIED', 'script', { doorId: door.id }, command.line);
         emit(ctx, 'DOOR_OPENED', 'script', { doorId: door.id, via: 'bypass' }, command.line);
         recordEvidence(ctx, 'AUTH', door.id, 2, `bypass:${door.id}`);
@@ -270,6 +732,12 @@ function applyScheduledScriptActions(ctx: TickContext): void {
       }
       case 'access.terminal.spoof':
         markNoisyAction(ctx);
+        if (command.deviceId) {
+          touchMissionNode(ctx, command.deviceId, { accessState: 'CONTROLLED', nodeType: 'AUTH' });
+        }
+        if (command.textArg) {
+          ctx.state.mission.identityState = command.textArg;
+        }
         emit(ctx, 'ACCESS_SPOOF_APPLIED', 'script', { terminalId: command.deviceId ?? null, identity: command.textArg ?? '' }, command.line);
         recordEvidence(ctx, 'AUTH', command.deviceId ?? 'terminal', 1, `terminal_spoof:${command.textArg ?? ''}`, {
           forged: true,
@@ -278,6 +746,9 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         break;
       case 'access.auth.replayToken':
         markNoisyAction(ctx);
+        if (command.deviceId) {
+          touchMissionNode(ctx, command.deviceId, { accessState: 'CONTROLLED', nodeType: 'AUTH' });
+        }
         emit(ctx, 'ACCESS_TOKEN_REPLAYED', 'script', { authId: command.deviceId ?? null, token: command.textArg ?? '' }, command.line);
         recordEvidence(ctx, 'AUTH', command.deviceId ?? 'auth', 2, `token_replay:${command.textArg ?? ''}`);
         break;
@@ -324,6 +795,7 @@ function applyScheduledScriptActions(ctx: TickContext): void {
           break;
         }
         door.isOpen = true;
+        ctx.state.mission.objectiveFlags.exfilCommitted = true;
         emit(ctx, 'DOOR_OPENED', 'script', { doorId: door.id }, command.line);
         recordEvidence(ctx, 'DEVICE', door.id, 1, `door_open:${door.id}`);
         break;
@@ -408,9 +880,18 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         if (command.targetId && !ctx.state.mission.trace.relays.includes(command.targetId)) {
           ctx.state.mission.trace.relays.push(command.targetId);
         }
+        if (command.targetId) {
+          ctx.state.mission.sessionRoute.push(command.targetId);
+          touchMissionNode(ctx, command.targetId, { accessState: 'SCANNED', nodeType: 'ROUTE' });
+        }
         emit(ctx, 'ROUTE_RELAY_APPLIED', 'script', { nodeId: command.targetId ?? null }, command.line);
         break;
       case 'route.agent':
+        if (command.targetId) {
+          ctx.state.mission.sessionRoute.push(command.targetId);
+          touchMissionNode(ctx, command.targetId, { accessState: 'CONTROLLED', nodeType: 'ROUTE' });
+        }
+        ctx.state.mission.objectiveFlags.exfilCommitted = true;
         emit(ctx, 'ROUTE_AGENT_SELECTED', 'script', { route: command.targetId ?? null }, command.line);
         break;
       case 'decoy.burst':
@@ -465,6 +946,32 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         }
         emit(ctx, 'EVIDENCE_FRAME_SET', 'script', { target: command.textArg ?? null }, command.line);
         break;
+      case 'identity.assume':
+        if (command.textArg) {
+          ctx.state.mission.identityState = command.textArg;
+          recordEvidence(ctx, 'AUTH', 'IDENTITY', 1, `identity_assume:${command.textArg}`, {
+            forged: true,
+            attributedTo: command.textArg,
+          });
+        }
+        emit(ctx, 'ACCESS_SPOOF_APPLIED', 'script', { terminalId: 'identity', identity: command.textArg ?? '' }, command.line);
+        break;
+      case 'narrative.ticket':
+        emit(
+          ctx,
+          'LOG',
+          'script',
+          { message: `ticket ${command.targetId ?? 'N/A'} filed: ${command.textArg ?? ''}` },
+          command.line,
+        );
+        if (command.targetId) {
+          touchMissionNode(ctx, command.targetId, { nodeType: 'SYSTEM', accessState: 'CONTROLLED' });
+          recordEvidence(ctx, 'PROCESS', command.targetId, 1, `ticket:${command.textArg ?? ''}`, {
+            forged: true,
+            attributedTo: ctx.state.mission.identityState || 'UNKNOWN',
+          });
+        }
+        break;
       case 'log':
         emit(ctx, 'LOG', 'script', { message: command.textArg ?? '' }, command.line);
         break;
@@ -512,6 +1019,39 @@ function updateDroneMovement(ctx: TickContext): void {
 }
 
 function updateCameraDetection(ctx: TickContext): boolean {
+  if (isMissionMode(ctx)) {
+    let detected = false;
+    const alarm = getAlarm(ctx.state);
+    const detectionPressure =
+      ctx.noisyScriptActionsThisTick > 0 ||
+      alarm?.state === 'RED' ||
+      ctx.state.mission.trace.progress >= 70;
+
+    for (const device of Object.values(ctx.state.devices)) {
+      if (device.type !== 'camera') {
+        continue;
+      }
+      const camera = device;
+      const wasDetecting = ctx.cameraDetectionMemory[camera.id] ?? false;
+      const nowDetecting = camera.enabled && detectionPressure;
+      if (!nowDetecting) {
+        ctx.cameraDetectionMemory[camera.id] = false;
+        continue;
+      }
+      detected = true;
+      if (!wasDetecting) {
+        emit(ctx, 'CAMERA_DETECTED_PLAYER', 'detection', { cameraId: camera.id, player: 'session' });
+        recordEvidence(ctx, 'ALARM', camera.id, 2, `camera_detected:${camera.id}`);
+      }
+      ctx.cameraDetectionMemory[camera.id] = true;
+    }
+
+    if (detected) {
+      ctx.state.mission.detectedAtLeastOnce = true;
+    }
+    return detected;
+  }
+
   if (!ctx.state.player.alive) {
     for (const device of Object.values(ctx.state.devices)) {
       if (device.type === 'camera') {
@@ -664,7 +1204,8 @@ function updateTrace(ctx: TickContext, detected: boolean): void {
   ctx.state.mission.trace.progress = next;
   ctx.state.mission.trace.ratePerTick = delta;
   ctx.state.mission.trace.sources = sources;
-  ctx.state.mission.trace.lockedOn = next >= 75;
+  ctx.state.mission.trace.lockRisk = Number(next.toFixed(2));
+  ctx.state.mission.trace.lockedOn = ctx.state.mission.trace.lockRisk >= 75;
 
   emit(ctx, 'TRACE_UPDATED', 'trace', { delta: Number(delta.toFixed(2)), progress: Number(next.toFixed(2)) });
 
@@ -676,10 +1217,13 @@ function updateTrace(ctx: TickContext, detected: boolean): void {
   }
 
   if (next >= 100) {
-    const attributedTo = ctx.state.mission.attributionTarget ?? 'OPERATOR';
+    recalculateAttribution(ctx);
+    const attributedTo = ctx.state.mission.attribution.suspectedActor ?? 'OPERATOR';
     emit(ctx, 'TRACE_MAXED', 'trace', { attributedTo });
-    ctx.state.outcome = 'failure';
-    setMissionPhase(ctx, 'FAILED');
+    if (!ctx.missionConfig?.contract.missionRules.allowTraceOverflow) {
+      ctx.state.outcome = 'failure';
+      setMissionPhase(ctx, 'FAILED');
+    }
   }
 }
 
@@ -704,6 +1248,22 @@ function resolveTarget(state: SimulationState, preferredTargetId: string | null)
 }
 
 function updateTurrets(ctx: TickContext, detected: boolean): void {
+  if (isMissionMode(ctx)) {
+    const alarm = getAlarm(ctx.state);
+    if (alarm?.state !== 'RED') {
+      return;
+    }
+    for (const device of Object.values(ctx.state.devices)) {
+      if (device.type !== 'turret' || !device.enabled) {
+        continue;
+      }
+      emit(ctx, 'TURRET_TARGET_LOCK', 'combat', { turretId: device.id, targetId: 'session' });
+      emit(ctx, 'TURRET_FIRED', 'combat', { turretId: device.id, targetId: 'session' });
+      recordEvidence(ctx, 'ALARM', device.id, 2, `turret_fire:session`);
+    }
+    return;
+  }
+
   const alarm = getAlarm(ctx.state);
 
   for (const device of Object.values(ctx.state.devices)) {
@@ -785,6 +1345,9 @@ function findBlockingDoor(state: SimulationState, x: number, y: number): DoorDev
 }
 
 function updatePlayerMovement(ctx: TickContext): void {
+  if (isMissionMode(ctx)) {
+    return;
+  }
   const player = ctx.state.player;
   if (!player.alive || player.reachedExit) {
     return;
@@ -828,19 +1391,20 @@ function evaluateObjectiveComplete(ctx: TickContext): boolean {
   const flags = ctx.state.mission.objectiveFlags;
   switch (contract.objectiveType) {
     case 'RETRIEVE':
-      return flags.fileCopied && ctx.state.player.reachedExit;
+      return flags.fileCopied;
     case 'DELETE':
-      return flags.fileDeleted && ctx.state.player.reachedExit;
+      return flags.fileDeleted;
     case 'ALTER':
-      return flags.recordAltered && ctx.state.player.reachedExit;
+      return flags.recordAltered;
     case 'SABOTAGE':
-      return flags.sabotageDone && ctx.state.player.reachedExit;
+      return flags.sabotageDone;
     case 'FRAME':
-      return flags.frameSet && ctx.state.player.reachedExit;
+      return flags.frameSet && (flags.sabotageDone || flags.fileDeleted || flags.recordAltered || flags.fileCopied);
     case 'ESCORT':
+      return flags.exfilCommitted;
     case 'EXFIL':
     default:
-      return ctx.state.player.reachedExit;
+      return flags.exfilCommitted;
   }
 }
 
@@ -878,6 +1442,7 @@ function isCleanupSatisfied(ctx: TickContext): { ok: boolean; reason?: string; a
   }
 
   const rules = contract.missionRules;
+  const attribution = ctx.state.mission.attribution;
   const unsanitizedOperatorEvidence = ctx.state.mission.evidence.filter(
     (evidence) =>
       !evidence.scrubbed &&
@@ -886,6 +1451,7 @@ function isCleanupSatisfied(ctx: TickContext): { ok: boolean; reason?: string; a
       evidence.severity >= 2,
   );
   const frameTarget = rules.targetFrameIdentity ?? ctx.state.mission.attributionTarget ?? null;
+  const traceTolerance = rules.traceTolerance ?? (rules.requireNoTrace ? 40 : 100);
   const framedEvidence = frameTarget
     ? ctx.state.mission.evidence.filter(
         (evidence) => !evidence.scrubbed && (evidence.attributedTo ?? '') === frameTarget && (evidence.forged ?? false),
@@ -893,11 +1459,14 @@ function isCleanupSatisfied(ctx: TickContext): { ok: boolean; reason?: string; a
     : [];
 
   if (rules.requireNoTrace) {
-    if (ctx.state.mission.trace.progress >= 40) {
+    if (ctx.state.mission.trace.progress >= traceTolerance) {
       return { ok: false, reason: 'trace_above_clean_threshold', attributedTo: 'OPERATOR' };
     }
     if (unsanitizedOperatorEvidence.length > 0) {
       return { ok: false, reason: 'operator_evidence_remaining', attributedTo: 'OPERATOR' };
+    }
+    if (attribution.suspectedActor === 'OPERATOR' && attribution.confidence >= 0.6) {
+      return { ok: false, reason: 'operator_attribution_confident', attributedTo: 'OPERATOR' };
     }
   }
 
@@ -911,13 +1480,30 @@ function isCleanupSatisfied(ctx: TickContext): { ok: boolean; reason?: string; a
     if (unsanitizedOperatorEvidence.length > 0) {
       return { ok: false, reason: 'operator_evidence_remaining', attributedTo: 'OPERATOR' };
     }
+    if (attribution.suspectedActor !== frameTarget || attribution.confidence < 0.6) {
+      return {
+        ok: false,
+        reason: 'frame_target_not_confirmed',
+        attributedTo: attribution.suspectedActor || 'OPERATOR',
+      };
+    }
+  }
+
+  if (!rules.allowTraceOverflow && ctx.state.mission.trace.progress >= traceTolerance) {
+    return { ok: false, reason: 'trace_tolerance_exceeded', attributedTo: attribution.suspectedActor || 'OPERATOR' };
   }
 
   if (rules.forcedDetection && !ctx.state.mission.detectedAtLeastOnce) {
     return { ok: false, reason: 'forced_detection_not_triggered', attributedTo: 'OPERATOR' };
   }
 
-  return { ok: true, attributedTo: frameTarget ?? 'OPERATOR' };
+  if (rules.forcedDetection && !rules.allowFrameTarget) {
+    if (attribution.suspectedActor === 'OPERATOR' && attribution.confidence >= 0.6) {
+      return { ok: false, reason: 'operator_attribution_after_diversion', attributedTo: 'OPERATOR' };
+    }
+  }
+
+  return { ok: true, attributedTo: attribution.suspectedActor ?? frameTarget ?? 'UNKNOWN' };
 }
 
 function updateCleanupProgress(ctx: TickContext): void {
@@ -944,9 +1530,17 @@ function updateCleanupProgress(ctx: TickContext): void {
 
 function checkWinLose(ctx: TickContext): boolean {
   if (!ctx.state.player.alive) {
-    ctx.state.outcome = 'failure';
-    setMissionPhase(ctx, 'FAILED');
-    return true;
+    if (!isMissionMode(ctx)) {
+      ctx.state.outcome = 'failure';
+      setMissionPhase(ctx, 'FAILED');
+      return true;
+    }
+    const objectiveType = ctx.missionConfig?.contract.objectiveType ?? 'EXFIL';
+    if (objectiveType === 'EXFIL' || objectiveType === 'ESCORT') {
+      ctx.state.outcome = 'failure';
+      setMissionPhase(ctx, 'FAILED');
+      return true;
+    }
   }
 
   if (!isMissionMode(ctx) && ctx.state.player.reachedExit) {
@@ -989,6 +1583,22 @@ function initializeMissionState(ctx: TickContext): void {
   if (contract?.missionRules.targetFrameIdentity) {
     ctx.state.mission.attributionTarget = contract.missionRules.targetFrameIdentity;
   }
+  for (const nodeId of contract?.siteNodes ?? []) {
+    touchMissionNode(ctx, nodeId, {
+      nodeType: 'SYSTEM',
+      accessState: 'VISIBLE',
+      riskState: 'LOW',
+    });
+  }
+  for (const fileId of contract?.fileTargets ?? []) {
+    touchMissionNode(ctx, fileId, { nodeType: 'FILE', accessState: 'VISIBLE', riskState: 'LOW' });
+  }
+  for (const recordId of contract?.recordTargets ?? []) {
+    touchMissionNode(ctx, recordId, { nodeType: 'RECORD', accessState: 'VISIBLE', riskState: 'LOW' });
+  }
+  for (const authId of contract?.authEndpoints ?? []) {
+    touchMissionNode(ctx, authId, { nodeType: 'AUTH', accessState: 'VISIBLE', riskState: 'LOW' });
+  }
 }
 
 export function runTickEngine(
@@ -1018,13 +1628,17 @@ export function runTickEngine(
   };
 
   initializeMissionState(ctx);
-
+  evaluateMissionOutcome(ctx);
   frames.push(buildFrame(ctx.state, [], []));
 
   while (ctx.state.outcome === 'running') {
     ctx.eventsThisTick = [];
     ctx.executedLines = [];
     ctx.noisyScriptActionsThisTick = 0;
+
+    if (isMissionMode(ctx) && ctx.state.mission.phase === 'PLANNING') {
+      setMissionPhase(ctx, 'OBJECTIVE');
+    }
 
     if (ctx.state.tick >= ctx.tickLimit) {
       emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.tickLimit });
@@ -1033,6 +1647,8 @@ export function runTickEngine(
       }
       ctx.state.outcome = 'failure';
       setMissionPhase(ctx, 'FAILED');
+      recalculateAttribution(ctx);
+      evaluateMissionOutcome(ctx);
 
       const frame = buildFrame(ctx.state, ctx.eventsThisTick, ctx.executedLines);
       frames.push(frame);
@@ -1049,7 +1665,9 @@ export function runTickEngine(
     updateTurrets(ctx, detected);
     updatePlayerMovement(ctx);
     updateObjectiveProgress(ctx);
+    recalculateAttribution(ctx);
     updateCleanupProgress(ctx);
+    evaluateMissionOutcome(ctx);
 
     const done = checkWinLose(ctx);
     ctx.state.tick += 1;
@@ -1058,6 +1676,8 @@ export function runTickEngine(
       emit(ctx, 'RUN_TIMEOUT', 'system', { tickLimit: ctx.tickLimit });
       ctx.state.outcome = 'failure';
       setMissionPhase(ctx, 'FAILED');
+      recalculateAttribution(ctx);
+      evaluateMissionOutcome(ctx);
     }
 
     const frame = buildFrame(ctx.state, ctx.eventsThisTick, ctx.executedLines);
@@ -1081,6 +1701,7 @@ export function runTickEngine(
     frames,
     events,
     outcome,
+    missionOutcome: ctx.state.mission.outcome,
     finalTick: ctx.state.tick,
     tickLimit,
     failureSummary,

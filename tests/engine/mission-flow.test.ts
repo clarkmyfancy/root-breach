@@ -45,9 +45,7 @@ test('frame contract can succeed when forged evidence matches target attribution
   const { contract, level, commands } = compileForContract(
     'contract_act1_08',
     [
-      'camera("C4A").disable(20)',
-      'camera("C4B").disable(20)',
-      'door("D4").open()',
+      'device("D4").sabotage("valve_pulse")',
       'wait(12)',
       'evidence().frame("RIVAL_OPS")',
       'logs("NETFLOW").forge("rival_sig")',
@@ -58,4 +56,26 @@ test('frame contract can succeed when forged evidence matches target attribution
   assert.equal(result.events.some((event) => event.type === 'OBJECTIVE_COMPLETED'), true);
   assert.equal(result.events.some((event) => event.type === 'CLEANUP_COMPLETED'), true);
   assert.equal(result.outcome, 'success');
+});
+
+test('non-exfil contracts can succeed without reaching exit when objective is complete', () => {
+  const { contract, level, commands } = compileForContract(
+    'contract_tut_03',
+    ['device("D3").sabotage("pulse")'].join('\n'),
+  );
+  const result = runSimulation(level, commands, { contract, globalHeat: 0 });
+
+  assert.equal(result.outcome, 'success');
+  assert.equal(result.events.some((event) => event.type === 'OBJECTIVE_COMPLETED'), true);
+  assert.equal(result.events.some((event) => event.type === 'PLAYER_REACHED_EXIT'), false);
+});
+
+test('event stream rows expose mission-readable message and impact fields', () => {
+  const { contract, level, commands } = compileForContract('contract_tut_02', 'door("D2").open()');
+  const result = runSimulation(level, commands, { contract, globalHeat: 4 });
+  const traceEvent = result.events.find((event) => event.type === 'TRACE_UPDATED');
+  assert.ok(traceEvent);
+  assert.equal(typeof traceEvent?.message, 'string');
+  assert.equal(typeof traceEvent?.target, 'string');
+  assert.equal(typeof traceEvent?.traceImpact, 'number');
 });

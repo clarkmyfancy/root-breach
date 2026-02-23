@@ -64,9 +64,13 @@ function validateContractTargets(command: ParsedCommand, contract: ContractDefin
   switch (command.kind) {
     case 'scan.node':
     case 'route.relay':
-    case 'route.agent':
       if (!command.targetId || !contract.siteNodes.includes(command.targetId)) {
         errors.push({ line: command.line, message: `Node "${command.targetId ?? ''}" is not in contract scope` });
+      }
+      break;
+    case 'route.agent':
+      if (!command.targetId) {
+        errors.push({ line: command.line, message: 'route.agent requires a route id' });
       }
       break;
     case 'probe.logs':
@@ -106,6 +110,13 @@ function validateContractTargets(command: ParsedCommand, contract: ContractDefin
       }
       break;
     case 'evidence.frame': {
+      if (!contract.missionRules.allowFrameTarget) {
+        errors.push({
+          line: command.line,
+          message: 'This contract does not allow frame targeting',
+        });
+        break;
+      }
       const validTargets = new Set([
         ...(contract.frameTargets ?? []),
         ...(contract.missionRules.targetFrameIdentity ? [contract.missionRules.targetFrameIdentity] : []),
@@ -118,6 +129,14 @@ function validateContractTargets(command: ParsedCommand, contract: ContractDefin
       }
       break;
     }
+    case 'narrative.ticket':
+      if (!command.targetId || !command.textArg) {
+        errors.push({
+          line: command.line,
+          message: 'narrative.ticket(ticketId,reason) requires ticket id and reason',
+        });
+      }
+      break;
     default:
       break;
   }
@@ -178,6 +197,7 @@ export function validateParsedScript(
       case 'access.auth.replayToken':
       case 'logs.forge':
       case 'evidence.frame':
+      case 'identity.assume':
         if (!command.textArg) {
           errors.push({ line: command.line, message: `${command.kind} requires a non-empty string argument` });
         }

@@ -148,6 +148,16 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'evidence.frame', textArg: m[1] }),
   },
   {
+    kind: 'identity.assume',
+    regex: /^identity\(\)\.assume\("([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'identity.assume', textArg: m[1] }),
+  },
+  {
+    kind: 'narrative.ticket',
+    regex: /^narrative\.ticket\("([A-Za-z0-9_:-]+)","([A-Za-z0-9_:-]+)"\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'narrative.ticket', targetId: m[1], textArg: m[2] }),
+  },
+  {
     kind: 'wait',
     regex: /^wait\((\d+)\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'wait', value: Number(m[1]) }),

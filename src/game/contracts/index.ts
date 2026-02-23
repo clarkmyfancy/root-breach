@@ -50,6 +50,17 @@ function withScope(contract: Omit<ContractDefinition, keyof SiteContractScope>):
   const scope = scopeBySiteId[contract.siteId];
   return {
     ...contract,
+    missionRules: {
+      tickLimit: contract.missionRules.tickLimit ?? 90,
+      allowCivilianCollateral: contract.missionRules.allowCivilianCollateral ?? false,
+      requireNoTrace: contract.missionRules.requireNoTrace ?? false,
+      allowFrameTarget: contract.missionRules.allowFrameTarget ?? false,
+      forcedDetection: contract.missionRules.forcedDetection ?? false,
+      targetFrameIdentity: contract.missionRules.targetFrameIdentity ?? '',
+      cleanupWindowTicks: contract.missionRules.cleanupWindowTicks ?? 24,
+      traceTolerance: contract.missionRules.traceTolerance ?? (contract.missionRules.requireNoTrace ? 40 : 95),
+      allowTraceOverflow: contract.missionRules.allowTraceOverflow ?? false,
+    },
     siteNodes: scope.siteNodes,
     fileTargets: scope.fileTargets,
     recordTargets: scope.recordTargets,

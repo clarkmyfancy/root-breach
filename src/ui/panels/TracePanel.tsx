@@ -4,10 +4,19 @@ interface TracePanelProps {
   progress: number;
   ratePerTick: number;
   lockedOn: boolean;
+  lockRisk: number;
+  confidenceAgainstOperator: number;
   sources: TraceSource[];
 }
 
-export function TracePanel({ progress, ratePerTick, lockedOn, sources }: TracePanelProps): JSX.Element {
+export function TracePanel({
+  progress,
+  ratePerTick,
+  lockedOn,
+  lockRisk,
+  confidenceAgainstOperator,
+  sources,
+}: TracePanelProps): JSX.Element {
   const pct = Math.max(0, Math.min(100, progress));
   return (
     <div className="panel panel-trace">
@@ -18,6 +27,8 @@ export function TracePanel({ progress, ratePerTick, lockedOn, sources }: TracePa
       <div className="trace-meta">
         <span>{pct.toFixed(1)}%</span>
         <span>{ratePerTick >= 0 ? `+${ratePerTick.toFixed(1)}` : ratePerTick.toFixed(1)} / tick</span>
+        <span>Lock risk {lockRisk.toFixed(1)}%</span>
+        <span>Op confidence {(confidenceAgainstOperator * 100).toFixed(0)}%</span>
         <span>{lockedOn ? 'Locked On' : 'Diffuse'}</span>
       </div>
       <div className="trace-sources">

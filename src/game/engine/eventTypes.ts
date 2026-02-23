@@ -1,13 +1,30 @@
 import type {
   AlarmState,
+  AttributionResult,
   Device,
   EvidenceRecord,
   MissionPhase,
+  MissionOutcomeState,
+  NodeRuntimeState,
   PlayerState,
   TraceSource,
 } from '../models/types';
 
 export type EventCategory =
+  | 'COMMAND'
+  | 'AUTH'
+  | 'DEVICE'
+  | 'FILE'
+  | 'PROCESS'
+  | 'NETFLOW'
+  | 'ALARM'
+  | 'TRACE'
+  | 'OBJECTIVE'
+  | 'CLEANUP'
+  | 'ATTRIBUTION'
+  | 'FAILURE';
+
+export type LegacyEventCategory =
   | 'script'
   | 'detection'
   | 'alarm'
@@ -62,6 +79,8 @@ export type EventType =
   | 'TRACE_UPDATED'
   | 'TRACE_THRESHOLD_REACHED'
   | 'TRACE_MAXED'
+  | 'ATTRIBUTION_UPDATED'
+  | 'MISSION_OUTCOME_UPDATED'
   | 'MISSION_PHASE_CHANGED'
   | 'OBJECTIVE_PROGRESS'
   | 'OBJECTIVE_COMPLETED'
@@ -73,7 +92,16 @@ export interface EventRecord {
   tick: number;
   type: EventType;
   category: EventCategory;
+  legacyCategory?: LegacyEventCategory;
   line?: number;
+  message: string;
+  target: string;
+  traceImpact: number;
+  evidenceImpact: {
+    surface: string;
+    action: 'ADD' | 'SCRUB' | 'FORGE' | 'OVERWRITE' | 'SHIFT';
+    count: number;
+  } | null;
   payload: Record<string, string | number | boolean | null>;
 }
 
@@ -88,7 +116,12 @@ export interface SimulationSnapshot {
   traceProgress: number;
   traceRatePerTick: number;
   traceLockedOn: boolean;
+  traceLockRisk: number;
+  traceConfidenceAgainstOperator: number;
   traceSources: TraceSource[];
+  missionNodes: Record<string, NodeRuntimeState>;
+  attribution: AttributionResult;
+  missionOutcome: MissionOutcomeState;
   evidence: EvidenceRecord[];
 }
 
@@ -107,12 +140,15 @@ export interface FailureSummary {
   cleanupStatus?: 'not_required' | 'pending' | 'complete' | 'failed';
   exposureCauses?: string[];
   attributionConclusion?: string;
+  attributionConfidence?: number;
+  ruleFailures?: string[];
 }
 
 export interface SimulationResult {
   frames: ReplayFrame[];
   events: EventRecord[];
   outcome: 'success' | 'failure';
+  missionOutcome: MissionOutcomeState;
   finalTick: number;
   tickLimit: number;
   failureSummary?: FailureSummary;

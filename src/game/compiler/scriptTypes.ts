@@ -25,6 +25,8 @@ export type CommandKind =
   | 'logs.forge'
   | 'logs.overwrite'
   | 'evidence.frame'
+  | 'identity.assume'
+  | 'narrative.ticket'
   | 'wait'
   | 'log';
 

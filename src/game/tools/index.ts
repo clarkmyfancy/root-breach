@@ -7,7 +7,7 @@ export interface ToolOwnedState {
 
 export interface ToolDefinition {
   id: string;
-  category: 'PROBE' | 'ACCESS' | 'CONTROL' | 'PAYLOAD' | 'MASK' | 'SCRUB' | 'AUTO';
+  category: 'PROBE' | 'ACCESS' | 'CONTROL' | 'PAYLOAD' | 'MASK' | 'SCRUB' | 'NARRATIVE' | 'AUTO';
   name: string;
   tier: 1 | 2 | 3 | 4;
   cost: number;
@@ -105,6 +105,16 @@ export const toolCatalog: ToolDefinition[] = [
     unlocksCommands: ['logs.scrub', 'logs.forge', 'logs.overwrite', 'evidence.frame'],
     description: 'Counter-forensics and attribution redirection workflows.',
   },
+  {
+    id: 'tool_narrative_ops',
+    category: 'NARRATIVE',
+    name: 'Narrative Ops Deck',
+    tier: 2,
+    cost: 540,
+    repRequired: 2,
+    unlocksCommands: ['identity.assume', 'narrative.ticket'],
+    description: 'Operational cover-story and identity posture tooling.',
+  },
 ];
 
 export const toolById: Record<string, ToolDefinition> = toolCatalog.reduce<Record<string, ToolDefinition>>((acc, tool) => {
@@ -143,4 +153,6 @@ export const commandToolRequirements: Partial<Record<CommandKind, string>> = {
   'logs.forge': 'tool_scrub_suite',
   'logs.overwrite': 'tool_scrub_suite',
   'evidence.frame': 'tool_scrub_suite',
+  'identity.assume': 'tool_narrative_ops',
+  'narrative.ticket': 'tool_narrative_ops',
 };

@@ -10,23 +10,43 @@ import { TerminalPanel } from '../panels/TerminalPanel';
 import { WalkthroughPanel } from '../panels/WalkthroughPanel';
 import { useGameStore } from '../../store/useGameStore';
 
-type WalkthroughTarget = 'map' | 'terminalInput' | 'compileButton';
+type WalkthroughTarget = 'mapObjective' | 'mapGate' | 'mapTerminal' | 'terminalEditor' | 'terminalRun' | 'mapExit';
 
 const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: WalkthroughTarget }> = [
   {
-    title: 'Read The Map And Core Loop',
-    body: 'Your agent auto-runs this route. The loop is: fail, inspect what happened, patch script, replay from tick 0.',
-    target: 'map',
+    title: 'Mission Objective',
+    body: 'Goal: get to the far side through the top exit door. That door opens only after guards are eliminated.',
+    target: 'mapObjective',
   },
   {
-    title: 'Write Commands In Terminal',
-    body: 'Type commands here to change the level state. For Level 1, start with: door("D1").open()',
-    target: 'terminalInput',
+    title: 'Encounter Trigger',
+    body: 'When you step into the arena gap, the encounter starts. Guards chase and the turret begins evaluating its own code, which you can modify.',
+    target: 'mapGate',
   },
   {
-    title: 'Compile Before Replay',
-    body: 'Use Compile to validate syntax and devices. If there is an error, the line number appears below the terminal.',
-    target: 'compileButton',
+    title: 'Use The Turret Terminal',
+    body: 'Move next to TERM1 and press E. That opens the turret terminal modal.',
+    target: 'mapTerminal',
+  },
+  {
+    title: 'How Turret Logic Works',
+    body: 'The turret needs a setAim(x, y) output each firing cycle. No valid setAim means no aim and no shot.',
+    target: 'terminalEditor',
+  },
+  {
+    title: 'Compile And Run',
+    body: 'Write code, then Run (or Ctrl/Cmd+R). Run closes the terminal and returns to map mode with your new logic active.',
+    target: 'terminalRun',
+  },
+  {
+    title: 'First Script To Try',
+    body: 'Start with setAim(intruderPosX, intruderPosY) to track the intruder, then iterate toward guard-targeting logic.',
+    target: 'terminalEditor',
+  },
+  {
+    title: 'Finish The Level',
+    body: 'Once guards are down, the top exit door opens. Move through it to reach the next level. Replay resets if you fail.',
+    target: 'mapExit',
   },
 ];
 
@@ -671,12 +691,10 @@ export function LevelScreen(): JSX.Element {
   const selectedDevice = selectedDeviceId && currentFrame ? currentFrame.snapshot.devices[selectedDeviceId] ?? null : null;
   const walkthroughStepData =
     walkthroughActive && level.id === 'level1' ? levelOneWalkthroughSteps[walkthroughStep] : null;
-  const walkthroughPosition =
-    walkthroughStepData?.target === 'map'
-      ? 'map'
-      : walkthroughStepData?.target === 'terminalInput'
-        ? 'terminal'
-        : 'compile';
+  const walkthroughPosition = walkthroughStepData?.target ?? 'mapObjective';
+  const walkthroughMapHighlight = Boolean(walkthroughStepData?.target.startsWith('map'));
+  const walkthroughTerminalInputHighlight = walkthroughStepData?.target === 'terminalEditor';
+  const walkthroughTerminalCompileHighlight = walkthroughStepData?.target === 'terminalRun';
 
   if (isTurretAimLevel) {
     return (
@@ -704,6 +722,7 @@ export function LevelScreen(): JSX.Element {
             frameEvents={[]}
             selectedDeviceId={selectedDeviceId}
             onSelectDevice={selectDevice}
+            highlighted={walkthroughMapHighlight}
             overlay={
               <>
                 <div className="map-float-move-help" aria-hidden>
@@ -764,6 +783,21 @@ export function LevelScreen(): JSX.Element {
 
         </div>
 
+        {walkthroughStepData ? (
+          <WalkthroughPanel
+            step={walkthroughStep}
+            totalSteps={levelOneWalkthroughSteps.length}
+            title={walkthroughStepData.title}
+            body={walkthroughStepData.body}
+            canGoBack={walkthroughStep > 0}
+            isLastStep={walkthroughStep >= levelOneWalkthroughSteps.length - 1}
+            onBack={prevWalkthroughStep}
+            onNext={nextWalkthroughStep}
+            onSkip={dismissWalkthrough}
+            position={walkthroughPosition}
+          />
+        ) : null}
+
         {terminalAccessed ? (
           <div className="terminal-modal-backdrop" role="dialog" aria-modal="true">
             <div className="terminal-modal">
@@ -774,6 +808,8 @@ export function LevelScreen(): JSX.Element {
                 onCompile={compileCurrentScript}
                 onReplay={runFromTerminalMode}
                 onResetScript={resetScript}
+                highlightInput={walkthroughTerminalInputHighlight}
+                highlightCompile={walkthroughTerminalCompileHighlight}
                 variant="turretAim"
                 onExitTerminal={() => setTerminalAccessed(false)}
               />
@@ -810,7 +846,7 @@ export function LevelScreen(): JSX.Element {
             frameEvents={currentFrame?.events ?? []}
             selectedDeviceId={selectedDeviceId}
             onSelectDevice={selectDevice}
-            highlighted={walkthroughStepData?.target === 'map'}
+            highlighted={walkthroughMapHighlight}
           />
 
           <ReplayControls
@@ -851,8 +887,8 @@ export function LevelScreen(): JSX.Element {
             onCompile={compileCurrentScript}
             onReplay={runReplay}
             onResetScript={resetScript}
-            highlightInput={walkthroughStepData?.target === 'terminalInput'}
-            highlightCompile={walkthroughStepData?.target === 'compileButton'}
+            highlightInput={walkthroughTerminalInputHighlight}
+            highlightCompile={walkthroughTerminalCompileHighlight}
           />
         </div>
 

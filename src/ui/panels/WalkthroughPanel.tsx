@@ -8,7 +8,13 @@ interface WalkthroughPanelProps {
   onBack: () => void;
   onNext: () => void;
   onSkip: () => void;
-  position: 'map' | 'terminal' | 'compile' | 'eventLog';
+  position:
+    | 'mapObjective'
+    | 'mapGate'
+    | 'mapTerminal'
+    | 'terminalEditor'
+    | 'terminalRun'
+    | 'mapExit';
 }
 
 export function WalkthroughPanel({

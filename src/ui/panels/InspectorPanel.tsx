@@ -28,6 +28,8 @@ function serializeDevice(device: Device): string[] {
       rows.push(`lockDelay: ${device.lockDelay}`);
       rows.push(`alarmTrigger: ${device.alarmTrigger}`);
       rows.push(`desiredTarget: ${device.desiredTargetId ?? '-'}`);
+      rows.push(`manualAimX: ${device.manualAimX ?? '-'}`);
+      rows.push(`manualAimY: ${device.manualAimY ?? '-'}`);
       rows.push(`currentTarget: ${device.currentTargetId ?? '-'}`);
       rows.push(`lockTicks: ${device.lockTicks}`);
       break;

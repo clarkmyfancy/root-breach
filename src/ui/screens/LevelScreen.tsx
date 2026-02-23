@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { compileScript } from '../../game/compiler/compile';
+import { resolveAimExpression, type TurretAimContext } from '../../game/compiler/turretAim';
 import { levelById, levels } from '../../game/levels';
-import { EventLogPanel } from '../panels/EventLogPanel';
 import { FailureSummaryPanel } from '../panels/FailureSummaryPanel';
 import { InspectorPanel } from '../panels/InspectorPanel';
 import { MapPanel } from '../panels/MapPanel';
@@ -9,7 +10,7 @@ import { TerminalPanel } from '../panels/TerminalPanel';
 import { WalkthroughPanel } from '../panels/WalkthroughPanel';
 import { useGameStore } from '../../store/useGameStore';
 
-type WalkthroughTarget = 'map' | 'terminalInput' | 'compileButton' | 'eventLog';
+type WalkthroughTarget = 'map' | 'terminalInput' | 'compileButton';
 
 const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: WalkthroughTarget }> = [
   {
@@ -27,15 +28,121 @@ const levelOneWalkthroughSteps: Array<{ title: string; body: string; target: Wal
     body: 'Use Compile to validate syntax and devices. If there is an error, the line number appears below the terminal.',
     target: 'compileButton',
   },
-  {
-    title: 'Use Event Log To Debug',
-    body: 'The event log shows state changes over time. Use timestamps to understand what happened and when.',
-    target: 'eventLog',
-  },
 ];
 
+function isWalkable(level: NonNullable<ReturnType<typeof getLevel>>, x: number, y: number, closedDoorTiles: Set<string>): boolean {
+  if (x < 0 || y < 0 || x >= level.map.width || y >= level.map.height) {
+    return false;
+  }
+
+  if (level.map.walls.some((wall) => wall.x === x && wall.y === y)) {
+    return false;
+  }
+
+  return !closedDoorTiles.has(`${x},${y}`);
+}
+
+function getLevel(levelId: string | null) {
+  return levelId ? levelById[levelId] ?? null : null;
+}
+
+interface ArenaBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+interface MapGuard {
+  id: string;
+  x: number;
+  y: number;
+  alive: boolean;
+}
+
+function getArenaBounds(level: NonNullable<ReturnType<typeof getLevel>>): ArenaBounds | null {
+  if (!level.map.walls.length) {
+    return null;
+  }
+
+  const xs = level.map.walls.map((wall) => wall.x);
+  const ys = level.map.walls.map((wall) => wall.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+function isInsideArena(level: NonNullable<ReturnType<typeof getLevel>>, x: number, y: number): boolean {
+  const bounds = getArenaBounds(level);
+  if (!bounds) {
+    return false;
+  }
+  return x > bounds.minX && x < bounds.maxX && y > bounds.minY && y < bounds.maxY;
+}
+
+function getInitialGuards(level: NonNullable<ReturnType<typeof getLevel>>): MapGuard[] {
+  return level.devices
+    .filter((device): device is Extract<(typeof level.devices)[number], { type: 'drone' }> => device.type === 'drone')
+    .map((drone) => ({
+      id: drone.id,
+      x: drone.x,
+      y: drone.y,
+      alive: drone.alive,
+    }));
+}
+
+function chooseGuardStep(
+  guard: MapGuard,
+  player: { x: number; y: number },
+  level: NonNullable<ReturnType<typeof getLevel>>,
+  closedDoorTiles: Set<string>,
+): { x: number; y: number } {
+  const dx = player.x - guard.x;
+  const dy = player.y - guard.y;
+
+  const horizontal = dx === 0 ? 0 : dx > 0 ? 1 : -1;
+  const vertical = dy === 0 ? 0 : dy > 0 ? 1 : -1;
+  const prioritizeHorizontal = Math.abs(dx) >= Math.abs(dy);
+
+  const candidates = prioritizeHorizontal
+    ? [
+        { dx: horizontal, dy: 0 },
+        { dx: 0, dy: vertical },
+      ]
+    : [
+        { dx: 0, dy: vertical },
+        { dx: horizontal, dy: 0 },
+      ];
+
+  for (const candidate of candidates) {
+    if (candidate.dx === 0 && candidate.dy === 0) {
+      continue;
+    }
+    const nextX = guard.x + candidate.dx;
+    const nextY = guard.y + candidate.dy;
+    if (isWalkable(level, nextX, nextY, closedDoorTiles)) {
+      return { x: nextX, y: nextY };
+    }
+  }
+
+  return { x: guard.x, y: guard.y };
+}
+
+function buildMapAimContext(player: { x: number; y: number }, turret: { x: number; y: number }, guards: MapGuard[]): TurretAimContext {
+  const activeGuards = guards.filter((guard) => guard.alive);
+  return {
+    intruderPosX: player.x - turret.x,
+    intruderPosY: player.y - turret.y,
+    numGuards: activeGuards.length,
+    guardPosX: activeGuards.map((guard) => guard.x - turret.x),
+    guardPosY: activeGuards.map((guard) => guard.y - turret.y),
+  };
+}
+
 export function LevelScreen(): JSX.Element {
-  const eventLogAnchorRef = useRef<HTMLDivElement | null>(null);
   const phase = useGameStore((state) => state.phase);
   const currentLevelId = useGameStore((state) => state.currentLevelId);
   const replayResult = useGameStore((state) => state.replayResult);
@@ -77,16 +184,396 @@ export function LevelScreen(): JSX.Element {
     return () => window.clearInterval(id);
   }, [replayPlaying, replaySpeed]);
 
-  const level = currentLevelId ? levelById[currentLevelId] : null;
+  const level = getLevel(currentLevelId);
   const currentFrame = replayResult?.frames[Math.min(frameIndex, Math.max(0, (replayResult?.frames.length ?? 1) - 1))] ?? null;
-  const tick = currentFrame?.tick ?? 0;
+  const isTurretAimLevel = level?.uiVariant === 'turretAim';
 
-  const visibleEvents = useMemo(() => {
-    if (!replayResult || !currentFrame) {
-      return [];
+  const [terminalAccessed, setTerminalAccessed] = useState(true);
+  const [mapPlayerPos, setMapPlayerPos] = useState<{ x: number; y: number } | null>(null);
+  const [mapPlayerAlive, setMapPlayerAlive] = useState(true);
+  const [mapGuards, setMapGuards] = useState<MapGuard[]>([]);
+  const [arenaActive, setArenaActive] = useState(false);
+  const [turretCharge, setTurretCharge] = useState(0);
+  const [turretAimPreview, setTurretAimPreview] = useState<{ x: number; y: number } | null>(null);
+  const mapEncounterMode = isTurretAimLevel && phase === 'hack' && !terminalAccessed;
+
+  useEffect(() => {
+    setTerminalAccessed(!isTurretAimLevel);
+  }, [currentLevelId, isTurretAimLevel]);
+
+  useEffect(() => {
+    if (!isTurretAimLevel || !level) {
+      setMapPlayerPos(null);
+      setMapPlayerAlive(true);
+      setMapGuards([]);
+      setArenaActive(false);
+      setTurretCharge(0);
+      setTurretAimPreview(null);
+      return;
     }
-    return replayResult.events.filter((event) => event.tick <= currentFrame.tick);
-  }, [replayResult, currentFrame]);
+    setMapPlayerPos({ x: level.entry.x, y: level.entry.y });
+    setMapPlayerAlive(true);
+    setMapGuards(getInitialGuards(level));
+    setArenaActive(false);
+    setTurretCharge(0);
+    setTurretAimPreview(null);
+    turretLockRef.current = 0;
+    turretTargetRef.current = null;
+  }, [currentLevelId, isTurretAimLevel, level]);
+
+  const closedDoorTiles = useMemo(() => {
+    const tiles = new Set<string>();
+    if (!currentFrame) {
+      return tiles;
+    }
+    Object.values(currentFrame.snapshot.devices).forEach((device) => {
+      if (device.type === 'door' && !device.isOpen) {
+        tiles.add(`${device.x},${device.y}`);
+      }
+    });
+    return tiles;
+  }, [currentFrame]);
+
+  const mapPlayerPosRef = useRef<{ x: number; y: number } | null>(null);
+  const mapPlayerAliveRef = useRef(true);
+  const mapGuardsRef = useRef<MapGuard[]>([]);
+  const turretLockRef = useRef(0);
+  const turretTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    mapPlayerPosRef.current = mapPlayerPos;
+  }, [mapPlayerPos]);
+  useEffect(() => {
+    mapPlayerAliveRef.current = mapPlayerAlive;
+  }, [mapPlayerAlive]);
+  useEffect(() => {
+    mapGuardsRef.current = mapGuards;
+  }, [mapGuards]);
+
+  const turretDevice =
+    level?.devices.find(
+      (device): device is Extract<(typeof level.devices)[number], { type: 'turret' }> => device.type === 'turret',
+    ) ?? null;
+
+  const scriptedAimInstruction = useMemo(() => {
+    if (!level || !turretDevice) {
+      return null;
+    }
+
+    const compiled = compileScript(scriptText, level);
+    if (compiled.errors.length) {
+      return null;
+    }
+
+    for (let idx = compiled.commands.length - 1; idx >= 0; idx -= 1) {
+      const command = compiled.commands[idx];
+      if (command.kind !== 'turret.setAim') {
+        continue;
+      }
+      return {
+        xExpr: command.xExpr ?? null,
+        yExpr: command.yExpr ?? null,
+        xFallback: command.xValue ?? null,
+        yFallback: command.yValue ?? null,
+      };
+    }
+
+    return null;
+  }, [level, turretDevice, scriptText]);
+
+  const terminalDevice = level?.devices.find((device) => device.type === 'terminal') ?? null;
+  const activePlayerPos = mapEncounterMode
+    ? mapPlayerPos ?? (level ? level.entry : null)
+    : currentFrame?.snapshot.player ?? (level ? level.entry : null);
+
+  const playerNearTerminal = Boolean(
+    terminalDevice &&
+      activePlayerPos &&
+      Math.abs(activePlayerPos.x - terminalDevice.x) + Math.abs(activePlayerPos.y - terminalDevice.y) <= 1,
+  );
+
+  const mapModeSnapshot = useMemo(() => {
+    if (!currentFrame || !level || !isTurretAimLevel) {
+      return currentFrame?.snapshot ?? null;
+    }
+
+    if (!mapEncounterMode) {
+      return currentFrame.snapshot;
+    }
+
+    const devices = { ...currentFrame.snapshot.devices };
+
+    for (const guard of mapGuards) {
+      const existing = devices[guard.id];
+      if (!existing || existing.type !== 'drone') {
+        continue;
+      }
+      devices[guard.id] = {
+        ...existing,
+        x: guard.x,
+        y: guard.y,
+        alive: guard.alive,
+        enabled: guard.alive,
+      };
+    }
+
+    if (turretDevice) {
+      const turret = devices[turretDevice.id];
+      if (turret && turret.type === 'turret') {
+        devices[turret.id] = {
+          ...turret,
+          currentTargetId: turretAimPreview ? `coord:${turretAimPreview.x},${turretAimPreview.y}` : null,
+        };
+      }
+    }
+
+    return {
+      ...currentFrame.snapshot,
+      player: {
+        ...currentFrame.snapshot.player,
+        x: activePlayerPos?.x ?? level.entry.x,
+        y: activePlayerPos?.y ?? level.entry.y,
+        alive: mapPlayerAlive,
+      },
+      devices,
+    };
+  }, [
+    currentFrame,
+    level,
+    isTurretAimLevel,
+    mapEncounterMode,
+    mapGuards,
+    turretDevice,
+    turretAimPreview,
+    activePlayerPos,
+    mapPlayerAlive,
+  ]);
+
+  const resetMapEncounter = () => {
+    if (!level) {
+      return;
+    }
+    openHack();
+    resetReplay();
+    setMapPlayerPos({ x: level.entry.x, y: level.entry.y });
+    setMapPlayerAlive(true);
+    setMapGuards(getInitialGuards(level));
+    setArenaActive(false);
+    setTurretCharge(0);
+    setTurretAimPreview(null);
+    turretLockRef.current = 0;
+    turretTargetRef.current = null;
+    setTerminalAccessed(false);
+  };
+
+  const runFromTerminalMode = () => {
+    runReplay();
+    openHack();
+    setTerminalAccessed(false);
+  };
+
+  useEffect(() => {
+    if (!mapEncounterMode || !level) {
+      return;
+    }
+
+    const movementByKey: Record<string, { dx: number; dy: number }> = {
+      w: { dx: 0, dy: -1 },
+      a: { dx: -1, dy: 0 },
+      s: { dx: 0, dy: 1 },
+      d: { dx: 1, dy: 0 },
+      arrowup: { dx: 0, dy: -1 },
+      arrowleft: { dx: -1, dy: 0 },
+      arrowdown: { dx: 0, dy: 1 },
+      arrowright: { dx: 1, dy: 0 },
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (key === 'e') {
+        if (playerNearTerminal && mapPlayerAliveRef.current) {
+          event.preventDefault();
+          setTerminalAccessed(true);
+        }
+        return;
+      }
+
+      const delta = movementByKey[key];
+      if (!delta) {
+        return;
+      }
+
+      if (!mapPlayerAliveRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      setMapPlayerPos((prev) => {
+        const baseX = prev?.x ?? level.entry.x;
+        const baseY = prev?.y ?? level.entry.y;
+        const nextX = baseX + delta.dx;
+        const nextY = baseY + delta.dy;
+
+        if (!isWalkable(level, nextX, nextY, closedDoorTiles)) {
+          return { x: baseX, y: baseY };
+        }
+
+        if (isInsideArena(level, nextX, nextY)) {
+          setArenaActive(true);
+        }
+
+        return { x: nextX, y: nextY };
+      });
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mapEncounterMode, level, playerNearTerminal, closedDoorTiles]);
+
+  useEffect(() => {
+    if (!mapEncounterMode || !arenaActive || !level || !turretDevice || !mapPlayerAliveRef.current) {
+      return;
+    }
+
+    const id = window.setInterval(() => {
+      const player = mapPlayerPosRef.current;
+      if (!player || !mapPlayerAliveRef.current) {
+        return;
+      }
+
+      let latestGuards: MapGuard[] = mapGuardsRef.current;
+      setMapGuards((prevGuards) => {
+        const occupied = new Set(prevGuards.filter((guard) => guard.alive).map((guard) => `${guard.x},${guard.y}`));
+        let killedByGuard = false;
+
+        const nextGuards = prevGuards.map((guard) => {
+          if (!guard.alive) {
+            return guard;
+          }
+
+          occupied.delete(`${guard.x},${guard.y}`);
+          const candidate = chooseGuardStep(guard, player, level, closedDoorTiles);
+          const blockedByOtherGuard = occupied.has(`${candidate.x},${candidate.y}`);
+          const nextX = blockedByOtherGuard ? guard.x : candidate.x;
+          const nextY = blockedByOtherGuard ? guard.y : candidate.y;
+          occupied.add(`${nextX},${nextY}`);
+
+          if (nextX === player.x && nextY === player.y) {
+            killedByGuard = true;
+          }
+
+          return {
+            ...guard,
+            x: nextX,
+            y: nextY,
+          };
+        });
+
+        if (killedByGuard) {
+          mapPlayerAliveRef.current = false;
+          setMapPlayerAlive(false);
+          setTurretAimPreview(null);
+          turretLockRef.current = 0;
+          turretTargetRef.current = null;
+        }
+
+        latestGuards = nextGuards;
+        return nextGuards;
+      });
+
+      if (!mapPlayerAliveRef.current) {
+        return;
+      }
+
+      if (!scriptedAimInstruction) {
+        turretLockRef.current = 0;
+        turretTargetRef.current = null;
+        setTurretCharge(0);
+        setTurretAimPreview(null);
+        return;
+      }
+
+      let aimTarget: { x: number; y: number } | null = null;
+      const context = buildMapAimContext(player, turretDevice, latestGuards);
+      const resolvedX =
+        scriptedAimInstruction.xExpr !== null
+          ? resolveAimExpression(scriptedAimInstruction.xExpr, context).value
+          : scriptedAimInstruction.xFallback ?? undefined;
+      const resolvedY =
+        scriptedAimInstruction.yExpr !== null
+          ? resolveAimExpression(scriptedAimInstruction.yExpr, context).value
+          : scriptedAimInstruction.yFallback ?? undefined;
+      if (resolvedX !== undefined && resolvedY !== undefined) {
+        aimTarget = {
+          x: turretDevice.x + resolvedX,
+          y: turretDevice.y + resolvedY,
+        };
+      }
+
+      if (!aimTarget) {
+        turretLockRef.current = 0;
+        turretTargetRef.current = null;
+        setTurretCharge(0);
+        setTurretAimPreview(null);
+        return;
+      }
+
+      const inTurretRange = Math.abs(aimTarget.x - turretDevice.x) + Math.abs(aimTarget.y - turretDevice.y) <= turretDevice.range;
+      if (!inTurretRange) {
+        turretLockRef.current = 0;
+        turretTargetRef.current = null;
+        setTurretCharge(0);
+        setTurretAimPreview(null);
+        return;
+      }
+
+      const targetKey = `${aimTarget.x},${aimTarget.y}`;
+      if (turretTargetRef.current !== targetKey) {
+        turretTargetRef.current = targetKey;
+        turretLockRef.current = 1;
+      } else {
+        turretLockRef.current += 1;
+      }
+
+      setTurretAimPreview({ x: aimTarget.x, y: aimTarget.y });
+      setTurretCharge(turretLockRef.current);
+
+      if (turretLockRef.current < Math.max(1, turretDevice.lockDelay)) {
+        return;
+      }
+
+      if (player.x === aimTarget.x && player.y === aimTarget.y) {
+        mapPlayerAliveRef.current = false;
+        setMapPlayerAlive(false);
+      }
+
+      setMapGuards((prevGuards) =>
+        prevGuards.map((guard) =>
+          guard.alive && guard.x === aimTarget.x && guard.y === aimTarget.y ? { ...guard, alive: false } : guard,
+        ),
+      );
+
+      turretLockRef.current = 0;
+      setTurretCharge(0);
+    }, 320);
+
+    return () => window.clearInterval(id);
+  }, [mapEncounterMode, arenaActive, level, turretDevice, closedDoorTiles, scriptedAimInstruction]);
+
+  useEffect(() => {
+    if (!isTurretAimLevel || !terminalAccessed) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setTerminalAccessed(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isTurretAimLevel, terminalAccessed]);
 
   if (!currentLevelId || !level) {
     return (
@@ -107,25 +594,116 @@ export function LevelScreen(): JSX.Element {
       ? 'map'
       : walkthroughStepData?.target === 'terminalInput'
         ? 'terminal'
-        : walkthroughStepData?.target === 'compileButton'
-          ? 'compile'
-          : 'eventLog';
+        : 'compile';
 
   const levelIndex = levels.findIndex((entry) => entry.id === level.id);
   const nextLevel = levelIndex >= 0 ? levels[levelIndex + 1] : undefined;
 
-  useEffect(() => {
-    if (!walkthroughStepData || walkthroughStepData.target !== 'eventLog') {
-      return;
-    }
-    const node = eventLogAnchorRef.current;
-    if (!node) {
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }, [walkthroughStepData]);
+  if (isTurretAimLevel) {
+    return (
+      <div className="level-screen">
+        <header className="level-header">
+          <div>
+            <h2>{level.name}</h2>
+            <div className="muted">Phase: {phase}</div>
+          </div>
+
+          <div className="level-header__actions">
+            <button className="btn" onClick={openLevelSelect}>
+              Mission Board
+            </button>
+            <button className="btn" onClick={goToMainMenu}>
+              Main Menu
+            </button>
+          </div>
+        </header>
+
+        <div className="map-mode-layout">
+          <MapPanel
+            level={level}
+            snapshot={mapModeSnapshot}
+            frameEvents={[]}
+            selectedDeviceId={selectedDeviceId}
+            onSelectDevice={selectDevice}
+            overlay={
+              <>
+                <div className="map-float-move-help" aria-hidden>
+                  <div className="map-float-move-arrows">
+                    <span className="map-float-move-empty" />
+                    <span>↑</span>
+                    <span className="map-float-move-empty" />
+                    <span>←</span>
+                    <span>↓</span>
+                    <span>→</span>
+                  </div>
+                  <div>Move: WASD / Arrows</div>
+                </div>
+
+                {!terminalAccessed && arenaActive && mapPlayerAlive ? (
+                  <div className="map-float-lock">
+                    Turret lock: {turretCharge}/{Math.max(1, turretDevice?.lockDelay ?? 1)}
+                  </div>
+                ) : null}
+
+                {!terminalAccessed && mapPlayerAlive && playerNearTerminal ? (
+                  <div className="map-float-terminal-prompt">
+                    Press <code>E</code> to access turret terminal
+                  </div>
+                ) : null}
+
+                {!terminalAccessed && !mapPlayerAlive ? (
+                  <div className="map-float-terminal-prompt map-float-terminal-prompt--danger">
+                    Eliminated. Press Replay to reset.
+                  </div>
+                ) : null}
+
+                <button className="btn map-float-replay" onClick={resetMapEncounter}>
+                  Replay
+                </button>
+              </>
+            }
+          />
+
+          {phase === 'levelComplete' ? (
+            <div className="phase-card">
+              <h3>Level Complete</h3>
+              <div className="phase-card__actions">
+                {nextLevel ? (
+                  <button className="btn btn-primary" onClick={() => startLevel(nextLevel.id)}>
+                    Next Level
+                  </button>
+                ) : null}
+                <button className="btn" onClick={openLevelSelect}>
+                  Back to Board
+                </button>
+                <button className="btn" onClick={openHack}>
+                  Keep Tweaking Script
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+        </div>
+
+        {terminalAccessed ? (
+          <div className="terminal-modal-backdrop" role="dialog" aria-modal="true">
+            <div className="terminal-modal">
+              <TerminalPanel
+                source={scriptText}
+                errors={compileErrors}
+                onChange={updateScript}
+                onCompile={compileCurrentScript}
+                onReplay={runFromTerminalMode}
+                onResetScript={resetScript}
+                variant="turretAim"
+                onExitTerminal={() => setTerminalAccessed(false)}
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="level-screen">
@@ -151,15 +729,12 @@ export function LevelScreen(): JSX.Element {
             level={level}
             snapshot={currentFrame?.snapshot ?? null}
             frameEvents={currentFrame?.events ?? []}
-            tick={tick}
             selectedDeviceId={selectedDeviceId}
             onSelectDevice={selectDevice}
             highlighted={walkthroughStepData?.target === 'map'}
           />
 
           <ReplayControls
-            tick={tick}
-            maxTick={replayResult?.tickLimit ?? 0}
             playing={replayPlaying}
             speed={replaySpeed}
             onTogglePlay={toggleReplayPlaying}
@@ -187,9 +762,6 @@ export function LevelScreen(): JSX.Element {
             </div>
           ) : null}
 
-          <div ref={eventLogAnchorRef}>
-            <EventLogPanel events={visibleEvents} highlighted={walkthroughStepData?.target === 'eventLog'} />
-          </div>
         </div>
 
         <div className="right-top-pane">

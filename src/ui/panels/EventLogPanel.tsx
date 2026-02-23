@@ -5,6 +5,15 @@ interface EventLogPanelProps {
   highlighted?: boolean;
 }
 
+function formatTargetId(raw: unknown): string {
+  const targetId = String(raw ?? '');
+  const coord = targetId.match(/^coord:(-?\d+),(-?\d+)$/);
+  if (coord) {
+    return `(${coord[1]}, ${coord[2]})`;
+  }
+  return targetId;
+}
+
 function formatEvent(event: EventRecord): string {
   switch (event.type) {
     case 'CAMERA_DETECTED_PLAYER':
@@ -18,7 +27,7 @@ function formatEvent(event: EventRecord): string {
     case 'DEVICE_ENABLED':
       return `Enabled ${event.payload.deviceId}`;
     case 'TURRET_RETARGETED':
-      return `${event.payload.turretId} retargeted to ${event.payload.targetId}`;
+      return `${event.payload.turretId} retargeted to ${formatTargetId(event.payload.targetId)}`;
     case 'DOOR_OPENED':
       return `Door ${event.payload.doorId} opened`;
     case 'DOOR_CLOSED':
@@ -30,7 +39,7 @@ function formatEvent(event: EventRecord): string {
     case 'TURRET_TARGET_LOCK':
       return `Turret ${event.payload.turretId} locked ${event.payload.targetId}`;
     case 'TURRET_FIRED':
-      return `Turret ${event.payload.turretId} fired at ${event.payload.targetId}`;
+      return `Turret ${event.payload.turretId} fired at ${formatTargetId(event.payload.targetId)}`;
     case 'DRONE_DESTROYED':
       return `Drone ${event.payload.droneId} destroyed`;
     case 'PLAYER_BLOCKED_BY_DOOR':

@@ -1,5 +1,6 @@
 import type { LevelDefinition } from '../models/types';
 import type { CompileError, ParsedCommand } from './scriptTypes';
+import { getTurretAimContext, resolveAimExpression } from './turretAim';
 
 export function validateParsedScript(
   level: LevelDefinition,
@@ -29,6 +30,29 @@ export function validateParsedScript(
       case 'camera.disable': {
         if (command.value !== undefined && command.value <= 0) {
           errors.push({ line: command.line, message: 'disable(n) must be greater than 0 when provided' });
+        }
+        break;
+      }
+      case 'turret.setAim': {
+        const context = getTurretAimContext(level);
+        if (!context) {
+          errors.push({ line: command.line, message: 'setAim(x, y) requires a level with at least one turret' });
+          break;
+        }
+
+        if (!level.devices.some((device) => device.type === 'turret' && level.networkScope.includes(device.id))) {
+          errors.push({ line: command.line, message: 'No turret is reachable from this terminal scope' });
+          break;
+        }
+
+        const xResult = resolveAimExpression(command.xExpr ?? '', context);
+        if (xResult.error) {
+          errors.push({ line: command.line, message: `Invalid x expression: ${xResult.error}` });
+        }
+
+        const yResult = resolveAimExpression(command.yExpr ?? '', context);
+        if (yResult.error) {
+          errors.push({ line: command.line, message: `Invalid y expression: ${yResult.error}` });
         }
         break;
       }

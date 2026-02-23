@@ -1,70 +1,147 @@
-# Root Breach MVP
+# Root Breach
 
-A deterministic, tick-based browser puzzle game prototype built with React + TypeScript + Vite + Zustand.
+Root Breach is a React + TypeScript puzzle game prototype where the player physically moves on a map, accesses a terminal, writes code, and survives an encounter.
 
-## Run
+Current project state is intentionally focused: one playable mission (`level1`) centered on turret programming.
 
-1. `npm install`
-2. `npm run dev`
-3. Open the local Vite URL in your browser.
+## Current Gameplay Loop
 
-## Deploy To Heroku
+1. Start Level 1 from the mission board.
+2. Move the player in map mode (`WASD` or arrow keys).
+3. Enter the arena between walls to start combat.
+4. Move near the turret terminal and press `E` to open terminal mode.
+5. Write turret code, compile, and run.
+6. Terminal closes on run and returns to map mode.
+7. Use the floating `Replay` button on the map to reset the encounter.
 
-This app is a static React build, but Heroku still needs a web process to serve files.  
-This repo now includes:
+Important current behavior:
 
-- `server.js`: small Node static server that serves `dist/` and falls back to `index.html` for SPA routes
-- `Procfile`: `web: npm start`
-- `npm start`: runs `node server.js`
+- The terminal is the turret brain in this level.
+- If the script has no valid turret instruction (for example only `//setAim(...)`), the turret does not fire.
+- Event log UI is currently removed.
 
-Setup checklist:
+## Controls
 
-1. In Heroku app settings, ensure the `heroku/nodejs` buildpack is enabled.
-2. Keep stack current (for example `heroku-24`).
-3. Confirm your app has at least one active **Web** dyno/process type.
-4. Push to `main` (auto deploy will build and release).
+- `WASD` or arrow keys: move on map
+- `E`: open terminal when near terminal device
+- `Esc`: close terminal modal
+- Terminal buttons:
+  - `Compile`: syntax + semantic validation only
+  - `Run`: execute compiled script and close modal
+  - `Reset`: clear terminal source
+- Terminal shortcuts:
+  - `Ctrl/Cmd + C`: compile/run
+  - `Ctrl/Cmd + R`: reset source
 
-Local production test:
+## Scripting Language (Current)
 
-1. `npm run build`
-2. `npm start`
-3. Open `http://localhost:3000`
+Parser supports several commands globally, but Level 1 gameplay is built around turret aiming.
 
-## Core MVP Features Included
+### Key command for Level 1
 
-- 2D top-down playable map (canvas rendering)
-- Deterministic tick simulation loop with fixed update order
-- Fictional scripting DSL with parser, validator, compiler, and line-numbered errors
-- Replay with tick counter, line execution highlight, speed controls (1x/2x/4x), play/pause/reset
-- Device effects visible on map (camera disable, door open/close, alarm delay, turret retarget)
-- Failure summary with primary cause + cause chain + suggested focus
-- 5 handcrafted levels with increasing interactions
-- Progress persistence via localStorage (unlocks and scripts)
+- `setAim(x, y)`
 
-## Project Structure
+### Supported aim expressions
 
-- `src/game/engine` deterministic simulation, events, replay data
-- `src/game/compiler` DSL parsing/validation/compile
-- `src/game/levels` handcrafted level definitions
-- `src/store/useGameStore.ts` phase flow + replay control + progression
-- `src/ui` screens and right/left panel UI
-- `src/persistence/saveGame.ts` localStorage save/load
+- Integers: `-2`, `0`, `5`
+- Dynamic variables:
+  - `intruderPosX`
+  - `intruderPosY`
+  - `numGuards`
+  - `guardPosX[index]`
+  - `guardPosY[index]`
 
-## Add a New Level
+Example:
 
-1. Add `src/game/levels/levelX.ts` exporting a `LevelDefinition`.
-2. Register it in `src/game/levels/index.ts`.
-3. Include:
-   - `map`, `entry`, `exit`, `playerPath`
-   - `devices` with ids and runtime defaults
-   - `networkScope`
-   - `constraints`
+```txt
+// Track player
+setAim(intruderPosX, intruderPosY)
+```
 
-## Add a New DSL Command
+### Comments and loops
 
-1. Add syntax in `src/game/compiler/parser.ts`.
-2. Add validation in `src/game/compiler/validator.ts`.
-3. Add runtime effect in `applyScheduledScriptActions` inside `src/game/engine/tickEngine.ts`.
-4. Add log formatting in `src/ui/panels/EventLogPanel.tsx` if needed.
+- Full-line comments are ignored when prefixed with `//` or `#`.
+- `while (condition) { ... }` is supported and expanded at compile time.
+- Conditions support:
+  - `true`, `false`
+  - comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- Loop safety:
+  - body must advance time with `wait(n)`
+  - compile-time iteration guard prevents runaway expansion
 
-# root-breach
+## Dev Mode vs Production Mode
+
+Unlock behavior is environment-aware:
+
+- Dev mode (`import.meta.env.DEV === true`): all levels unlocked.
+- Production build: normal progression unlock order.
+
+There is currently one level, but the unlock system is still in place for future missions.
+
+## Architecture
+
+The codebase is split into deterministic simulation, compiler pipeline, state orchestration, and UI.
+
+- `src/game/compiler`
+  - `parser.ts`: command syntax
+  - `validator.ts`: device scope and semantic checks
+  - `compile.ts`: scheduling + while-loop expansion
+  - `turretAim.ts`: expression resolution for `setAim`
+- `src/game/engine`
+  - `tickEngine.ts`: deterministic tick simulation and event emission
+  - `simulationRunner.ts`: engine entrypoint
+  - `eventTypes.ts`: replay/event contracts
+- `src/game/levels`
+  - `level1.ts`: current mission data
+  - `index.ts`: level registry
+- `src/store`
+  - `useGameStore.ts`: app phase/state machine and replay controls
+  - `progression.ts`: unlock/attempt/best-script rules
+- `src/ui`
+  - `screens/LevelScreen.tsx`: map mode + terminal modal flow
+  - `panels/TerminalPanel.tsx`, `MapPanel.tsx`, `ReplayControls.tsx`, etc.
+- `src/persistence/saveGame.ts`
+  - local save/load via `localStorage`
+
+## Architectural Notes (Important)
+
+1. There are two runtime paths:
+   - Deterministic tick engine (`src/game/engine`) used for simulation/replay.
+   - Real-time turret-aim encounter loop in `src/ui/screens/LevelScreen.tsx` for WASD map mode.
+2. The compiler/engine path is well covered by automated tests.
+3. The map-mode encounter path is more UI-driven and should stay behaviorally aligned with engine rules as the game grows.
+4. Parser supports broader command surface than Level 1 currently uses; treat it as platform capacity for future levels.
+
+## Tests
+
+- `tests/compiler/compile-range.test.ts`
+  - compile bounds
+  - expression validation
+  - comments
+  - while-loop expansion rules
+- `tests/engine/determinism.test.ts`
+  - deterministic replay behavior
+  - fixed vs dynamic turret aiming
+  - “no instructions => no turret fire” behavior
+
+Run:
+
+```bash
+npm test
+```
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+## Production Build
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` serves `dist/` through `server.js` and supports SPA route fallback.

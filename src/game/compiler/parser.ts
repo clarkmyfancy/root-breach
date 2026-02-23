@@ -1,5 +1,62 @@
 import type { CompileError, ParsedCommand } from './scriptTypes';
 
+function splitTopLevelArgs(source: string): string[] | null {
+  const args: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let idx = 0; idx < source.length; idx += 1) {
+    const ch = source[idx];
+    if (ch === '(' || ch === '[') {
+      depth += 1;
+      continue;
+    }
+    if (ch === ')' || ch === ']') {
+      depth -= 1;
+      if (depth < 0) {
+        return null;
+      }
+      continue;
+    }
+    if (ch === ',' && depth === 0) {
+      args.push(source.slice(start, idx).trim());
+      start = idx + 1;
+    }
+  }
+
+  if (depth !== 0) {
+    return null;
+  }
+
+  args.push(source.slice(start).trim());
+  return args;
+}
+
+function parseSetAim(raw: string, line: number): ParseLineResult | null {
+  const match = raw.match(/^setAim\((.*)\)$/);
+  if (!match) {
+    return null;
+  }
+
+  const inner = match[1].trim();
+  const args = splitTopLevelArgs(inner);
+  if (!args || args.length !== 2 || !args[0] || !args[1]) {
+    return {
+      error: { line, message: 'Invalid setAim syntax. Expected: setAim(xExpr, yExpr)' },
+    };
+  }
+
+  return {
+    command: {
+      line,
+      raw,
+      kind: 'turret.setAim',
+      xExpr: args[0],
+      yExpr: args[1],
+    },
+  };
+}
+
 const patterns: Array<{
   kind: ParsedCommand['kind'];
   regex: RegExp;
@@ -62,6 +119,41 @@ export interface ParseResult {
   errors: CompileError[];
 }
 
+export interface ParseLineResult {
+  command?: ParsedCommand;
+  error?: CompileError;
+}
+
+export function parseLine(rawLine: string, line: number): ParseLineResult {
+  const raw = rawLine.trim();
+  if (!raw || raw.startsWith('//') || raw.startsWith('#')) {
+    return {};
+  }
+
+  const setAimParsed = parseSetAim(raw, line);
+  if (setAimParsed) {
+    return setAimParsed;
+  }
+
+  const pattern = patterns.find((item) => item.regex.test(raw));
+  if (!pattern) {
+    return {
+      error: { line, message: `Unrecognized command syntax: ${raw}` },
+    };
+  }
+
+  const match = raw.match(pattern.regex);
+  if (!match) {
+    return {
+      error: { line, message: `Unable to parse command: ${raw}` },
+    };
+  }
+
+  return {
+    command: pattern.map(match, line, raw),
+  };
+}
+
 export function parseScript(source: string): ParseResult {
   const commands: ParsedCommand[] = [];
   const errors: CompileError[] = [];
@@ -69,25 +161,14 @@ export function parseScript(source: string): ParseResult {
 
   lines.forEach((lineText, idx) => {
     const line = idx + 1;
-    const raw = lineText.trim();
-
-    if (!raw || raw.startsWith('//') || raw.startsWith('#')) {
+    const parsed = parseLine(lineText, line);
+    if (parsed.error) {
+      errors.push(parsed.error);
       return;
     }
-
-    const pattern = patterns.find((item) => item.regex.test(raw));
-    if (!pattern) {
-      errors.push({ line, message: `Unrecognized command syntax: ${raw}` });
-      return;
+    if (parsed.command) {
+      commands.push(parsed.command);
     }
-
-    const match = raw.match(pattern.regex);
-    if (!match) {
-      errors.push({ line, message: `Unable to parse command: ${raw}` });
-      return;
-    }
-
-    commands.push(pattern.map(match, line, raw));
   });
 
   return { commands, errors };

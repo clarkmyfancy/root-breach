@@ -171,6 +171,12 @@ textarea {
   gap: 0.7rem;
 }
 
+.map-mode-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
 .right-top-pane,
 .right-bottom-pane {
   min-height: 0;
@@ -212,12 +218,102 @@ textarea {
   flex-direction: column;
 }
 
+.map-canvas-wrap {
+  position: relative;
+}
+
 .map-canvas {
   width: 100%;
   max-width: 100%;
   border: 1px solid #1f365b;
   border-radius: 0.4rem;
   image-rendering: crisp-edges;
+}
+
+.map-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.map-float-replay {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  pointer-events: auto;
+  background: rgba(10, 18, 36, 0.9);
+  border-color: #0ea5e9;
+  color: #38bdf8;
+}
+
+.map-float-replay:hover:not(:disabled) {
+  background: rgba(15, 32, 60, 0.96);
+}
+
+.map-float-move-help {
+  position: absolute;
+  top: 0.7rem;
+  left: 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid #2563eb;
+  background: rgba(8, 14, 30, 0.9);
+  color: #dbeafe;
+  font-size: 0.82rem;
+}
+
+.map-float-move-arrows {
+  display: grid;
+  grid-template-columns: repeat(3, 1rem);
+  grid-template-rows: repeat(2, 0.95rem);
+  align-items: center;
+  justify-items: center;
+  color: #7dd3fc;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.map-float-move-empty {
+  opacity: 0;
+}
+
+.map-float-terminal-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 0.7rem;
+  transform: translateX(-50%);
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.45rem;
+  border: 1px solid #0ea5e9;
+  background: rgba(8, 14, 30, 0.92);
+  color: #e2e8f0;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.map-float-terminal-prompt code {
+  color: #7dd3fc;
+}
+
+.map-float-terminal-prompt--danger {
+  border-color: #ef4444;
+  color: #fecaca;
+}
+
+.map-float-lock {
+  position: absolute;
+  top: 0.7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.45rem;
+  border: 1px solid #2563eb;
+  background: rgba(8, 14, 30, 0.92);
+  color: #bfdbfe;
+  font-size: 0.82rem;
 }
 
 .replay-controls {
@@ -256,6 +352,10 @@ textarea {
   flex-direction: column;
   gap: 0.5rem;
   height: 100%;
+}
+
+.map-mode-terminal-access p {
+  margin-top: 0;
 }
 
 .help-button {
@@ -324,6 +424,136 @@ textarea {
   display: flex;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+.panel-terminal-turret {
+  background: #111214;
+  border-color: #2e3137;
+}
+
+.turret-terminal-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.turret-terminal-layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 0.6rem;
+  min-height: 340px;
+}
+
+.turret-terminal-editor-wrap {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  background: #0f1115;
+  border: 1px solid #252931;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  min-height: 340px;
+}
+
+.turret-terminal-gutter {
+  background: #13161c;
+  color: #58606d;
+  padding: 0.55rem 0.35rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: right;
+  user-select: none;
+}
+
+.turret-terminal-input {
+  border: 0;
+  border-radius: 0;
+  min-height: 340px;
+  background: #101215;
+  color: #f8fafc;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  padding: 0.55rem 0.6rem;
+}
+
+.turret-terminal-input:focus {
+  outline: none;
+}
+
+.turret-terminal-sidebar {
+  border: 1px solid #252931;
+  border-radius: 0.35rem;
+  background: #15171d;
+  padding: 0.7rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  color: #d1d5db;
+  min-height: 340px;
+}
+
+.turret-terminal-sidebar-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #e5e7eb;
+}
+
+.turret-terminal-divider {
+  border-top: 2px dashed #4b5563;
+  margin: 0.4rem 0 1.1rem;
+}
+
+.turret-terminal-divider-bottom {
+  margin-top: auto;
+  margin-bottom: 0.8rem;
+}
+
+.turret-terminal-block-title {
+  color: #f87171;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+  font-size: 0.95rem;
+}
+
+.turret-terminal-block {
+  font-size: 1rem;
+  line-height: 1.28;
+  margin-bottom: 1rem;
+}
+
+.turret-terminal-block-note {
+  font-size: 0.9rem;
+}
+
+.turret-terminal-gap {
+  height: 1rem;
+}
+
+.turret-terminal-hints {
+  font-size: 1rem;
+  line-height: 1.28;
+  color: #e5e7eb;
+}
+
+.terminal-actions-turret {
+  margin-top: 0.8rem;
+}
+
+.terminal-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.72);
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  z-index: 60;
+}
+
+.terminal-modal {
+  width: min(1400px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border-radius: 0.7rem;
 }
 
 .compile-errors {
@@ -525,5 +755,14 @@ textarea {
     top: auto;
     bottom: 1rem;
     width: auto;
+  }
+
+  .turret-terminal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .terminal-modal {
+    width: min(98vw, 1100px);
+    max-height: 95vh;
   }
 }

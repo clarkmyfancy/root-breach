@@ -5,6 +5,7 @@ export type CommandKind =
   | 'door.open'
   | 'door.close'
   | 'turret.retarget'
+  | 'turret.setAim'
   | 'device.tag'
   | 'wait'
   | 'log';
@@ -17,6 +18,10 @@ export interface ParsedCommand {
   targetId?: string;
   textArg?: string;
   value?: number;
+  xExpr?: string;
+  yExpr?: string;
+  xValue?: number;
+  yValue?: number;
 }
 
 export interface CompileError {
@@ -33,6 +38,10 @@ export interface CompiledCommand {
   targetId?: string;
   textArg?: string;
   value?: number;
+  xExpr?: string;
+  yExpr?: string;
+  xValue?: number;
+  yValue?: number;
 }
 
 export interface CompileResult {

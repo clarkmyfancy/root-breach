@@ -31,6 +31,10 @@ export interface TurretDevice extends BaseDevice {
   desiredTargetId: string | null;
   currentTargetId: string | null;
   lockTicks: number;
+  manualAimX?: number | null;
+  manualAimY?: number | null;
+  manualAimXExpr?: string | null;
+  manualAimYExpr?: string | null;
 }
 
 export interface DroneDevice extends BaseDevice {
@@ -82,6 +86,7 @@ export interface LevelDefinition {
   id: string;
   name: string;
   brief: string;
+  uiVariant?: 'default' | 'turretAim';
   map: LevelMap;
   entry: Point;
   exit: Point;

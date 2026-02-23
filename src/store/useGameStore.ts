@@ -70,9 +70,26 @@ interface GameStore {
   markWalkthroughAction: (action: WalkthroughAction) => void;
 }
 
-const initialSave = typeof window !== 'undefined' ? loadSaveData() : defaultSaveData;
+const shouldUnlockAllLevelsInDev = import.meta.env.DEV;
 
-function getInitialScript(_levelId: string): string {
+function withModeSaveOverrides(save: SaveData): SaveData {
+  if (!shouldUnlockAllLevelsInDev) {
+    return save;
+  }
+
+  return {
+    ...save,
+    unlockedLevelIndex: levels.length - 1,
+  };
+}
+
+const initialSave =
+  typeof window !== 'undefined' ? withModeSaveOverrides(loadSaveData()) : withModeSaveOverrides(defaultSaveData);
+
+function getInitialScript(levelId: string): string {
+  if (levelId === 'level1') {
+    return 'setAim(intruderPosX, intruderPosY)';
+  }
   return '';
 }
 
@@ -154,14 +171,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const result = runSimulation(level, commands);
     const walkthrough = createWalkthroughForLevel(levelId, saveBefore.seenLevel1Walkthrough);
+    const isTurretAimMode = level.uiVariant === 'turretAim';
     set({
-      phase: 'runObserve',
+      phase: isTurretAimMode ? 'hack' : 'runObserve',
       currentLevelId: levelId,
       scriptText: script,
       compileErrors: observeCompiled.errors,
       replayResult: result,
       frameIndex: 0,
-      replayPlaying: true,
+      replayPlaying: !isTurretAimMode,
       replaySpeed: 1,
       selectedDeviceId: null,
       failureSummary: result.failureSummary ?? null,

@@ -41,6 +41,11 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'turret.retarget', deviceId: m[1], targetId: m[2] }),
   },
   {
+    kind: 'turret.setAim',
+    regex: /^setAim\(\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'turret.setAim', xExpr: m[1].trim(), yExpr: m[2].trim() }),
+  },
+  {
     kind: 'device.tag',
     regex: /^device\("([A-Za-z0-9_:-]+)"\)\.tag\("([A-Za-z0-9_:-]+)"\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'device.tag', deviceId: m[1], textArg: m[2] }),
@@ -62,6 +67,36 @@ export interface ParseResult {
   errors: CompileError[];
 }
 
+export interface ParseLineResult {
+  command?: ParsedCommand;
+  error?: CompileError;
+}
+
+export function parseLine(rawLine: string, line: number): ParseLineResult {
+  const raw = rawLine.trim();
+  if (!raw || raw.startsWith('//') || raw.startsWith('#')) {
+    return {};
+  }
+
+  const pattern = patterns.find((item) => item.regex.test(raw));
+  if (!pattern) {
+    return {
+      error: { line, message: `Unrecognized command syntax: ${raw}` },
+    };
+  }
+
+  const match = raw.match(pattern.regex);
+  if (!match) {
+    return {
+      error: { line, message: `Unable to parse command: ${raw}` },
+    };
+  }
+
+  return {
+    command: pattern.map(match, line, raw),
+  };
+}
+
 export function parseScript(source: string): ParseResult {
   const commands: ParsedCommand[] = [];
   const errors: CompileError[] = [];
@@ -69,25 +104,14 @@ export function parseScript(source: string): ParseResult {
 
   lines.forEach((lineText, idx) => {
     const line = idx + 1;
-    const raw = lineText.trim();
-
-    if (!raw || raw.startsWith('//') || raw.startsWith('#')) {
+    const parsed = parseLine(lineText, line);
+    if (parsed.error) {
+      errors.push(parsed.error);
       return;
     }
-
-    const pattern = patterns.find((item) => item.regex.test(raw));
-    if (!pattern) {
-      errors.push({ line, message: `Unrecognized command syntax: ${raw}` });
-      return;
+    if (parsed.command) {
+      commands.push(parsed.command);
     }
-
-    const match = raw.match(pattern.regex);
-    if (!match) {
-      errors.push({ line, message: `Unable to parse command: ${raw}` });
-      return;
-    }
-
-    commands.push(pattern.map(match, line, raw));
   });
 
   return { commands, errors };

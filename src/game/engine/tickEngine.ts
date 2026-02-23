@@ -1,4 +1,5 @@
 import type { CompiledCommand } from '../compiler/scriptTypes';
+import { resolveAimExpression, type TurretAimContext } from '../compiler/turretAim';
 import { createInitialSimulationState } from '../models/state';
 import type {
   AlarmDevice,
@@ -58,6 +59,66 @@ function getAlarm(state: SimulationState): AlarmDevice | undefined {
     return undefined;
   }
   return found;
+}
+
+function getPrimaryTurret(ctx: TickContext): Extract<Device, { type: 'turret' }> | undefined {
+  const scopedTurretId = ctx.level.networkScope.find((deviceId) => {
+    const device = ctx.state.devices[deviceId];
+    return device?.type === 'turret';
+  });
+
+  if (scopedTurretId) {
+    const scoped = ctx.state.devices[scopedTurretId];
+    if (scoped?.type === 'turret') {
+      return scoped;
+    }
+  }
+
+  return Object.values(ctx.state.devices).find((device): device is Extract<Device, { type: 'turret' }> => {
+    return device.type === 'turret';
+  });
+}
+
+function buildDynamicAimContext(state: SimulationState, turret: Extract<Device, { type: 'turret' }>): TurretAimContext {
+  const activeGuards = Object.values(state.devices).filter((device): device is Extract<Device, { type: 'drone' }> => {
+    return device.type === 'drone' && device.alive && device.enabled;
+  });
+
+  return {
+    intruderPosX: state.player.x - turret.x,
+    intruderPosY: state.player.y - turret.y,
+    numGuards: activeGuards.length,
+    guardPosX: activeGuards.map((guard) => guard.x - turret.x),
+    guardPosY: activeGuards.map((guard) => guard.y - turret.y),
+  };
+}
+
+function resolveManualAimForTurret(
+  state: SimulationState,
+  turret: Extract<Device, { type: 'turret' }>,
+): { x: number; y: number } | null {
+  const hasExpr = Boolean(turret.manualAimXExpr && turret.manualAimYExpr);
+  if (!hasExpr) {
+    if (turret.manualAimX === undefined || turret.manualAimX === null || turret.manualAimY === undefined || turret.manualAimY === null) {
+      return null;
+    }
+    return { x: turret.manualAimX, y: turret.manualAimY };
+  }
+
+  const context = buildDynamicAimContext(state, turret);
+  const xResult = resolveAimExpression(turret.manualAimXExpr ?? '', context);
+  const yResult = resolveAimExpression(turret.manualAimYExpr ?? '', context);
+  if (xResult.error || yResult.error || xResult.value === undefined || yResult.value === undefined) {
+    if (turret.manualAimX === undefined || turret.manualAimX === null || turret.manualAimY === undefined || turret.manualAimY === null) {
+      return null;
+    }
+    return { x: turret.manualAimX, y: turret.manualAimY };
+  }
+
+  return {
+    x: xResult.value,
+    y: yResult.value,
+  };
 }
 
 function getDevice<T extends Device['type']>(
@@ -178,6 +239,10 @@ function applyScheduledScriptActions(ctx: TickContext): void {
           break;
         }
         turret.desiredTargetId = command.targetId;
+        turret.manualAimX = null;
+        turret.manualAimY = null;
+        turret.manualAimXExpr = null;
+        turret.manualAimYExpr = null;
         turret.currentTargetId = null;
         turret.lockTicks = 0;
         emit(
@@ -185,6 +250,30 @@ function applyScheduledScriptActions(ctx: TickContext): void {
           'TURRET_RETARGETED',
           'script',
           { turretId: turret.id, targetId: command.targetId },
+          command.line,
+        );
+        break;
+      }
+      case 'turret.setAim': {
+        const turret = getPrimaryTurret(ctx);
+        if (!turret || command.xValue === undefined || command.yValue === undefined) {
+          break;
+        }
+        turret.manualAimX = command.xValue;
+        turret.manualAimY = command.yValue;
+        turret.manualAimXExpr = command.xExpr ?? null;
+        turret.manualAimYExpr = command.yExpr ?? null;
+        turret.desiredTargetId = null;
+        turret.currentTargetId = null;
+        turret.lockTicks = 0;
+        emit(
+          ctx,
+          'TURRET_RETARGETED',
+          'script',
+          {
+            turretId: turret.id,
+            targetId: `coord:${turret.x + command.xValue},${turret.y + command.yValue}`,
+          },
           command.line,
         );
         break;
@@ -341,6 +430,12 @@ function resolveTarget(state: SimulationState, preferredTargetId: string | null)
   return playerTarget;
 }
 
+function findAliveDroneAt(state: SimulationState, x: number, y: number): Extract<Device, { type: 'drone' }> | undefined {
+  return Object.values(state.devices).find((device): device is Extract<Device, { type: 'drone' }> => {
+    return device.type === 'drone' && device.alive && device.enabled && device.x === x && device.y === y;
+  });
+}
+
 function updateTurrets(ctx: TickContext, detected: boolean): void {
   const alarm = getAlarm(ctx.state);
 
@@ -359,6 +454,55 @@ function updateTurrets(ctx: TickContext, detected: boolean): void {
       (turret.alarmTrigger === 'RED' && alarm?.state === 'RED') ||
       (turret.alarmTrigger === 'DETECTION' && (detected || turret.currentTargetId !== null));
     if (!active) {
+      turret.currentTargetId = null;
+      turret.lockTicks = 0;
+      continue;
+    }
+
+    const manualAim = resolveManualAimForTurret(ctx.state, turret);
+    if (manualAim) {
+      const targetX = turret.x + manualAim.x;
+      const targetY = turret.y + manualAim.y;
+      const targetId = `coord:${targetX},${targetY}`;
+
+      if (distance(turret, { x: targetX, y: targetY }) > turret.range) {
+        turret.currentTargetId = null;
+        turret.lockTicks = 0;
+        continue;
+      }
+
+      if (turret.currentTargetId !== targetId) {
+        turret.currentTargetId = targetId;
+        turret.lockTicks = 1;
+        emit(ctx, 'TURRET_TARGET_LOCK', 'combat', { turretId: turret.id, targetId });
+      } else {
+        turret.lockTicks += 1;
+      }
+
+      if (turret.lockTicks < turret.lockDelay) {
+        continue;
+      }
+
+      emit(ctx, 'TURRET_FIRED', 'combat', { turretId: turret.id, targetId });
+
+      if (ctx.state.player.alive && ctx.state.player.x === targetX && ctx.state.player.y === targetY) {
+        ctx.state.player.alive = false;
+        emit(ctx, 'PLAYER_KILLED', 'combat', { turretId: turret.id });
+      }
+
+      const drone = findAliveDroneAt(ctx.state, targetX, targetY);
+      if (drone) {
+        drone.alive = false;
+        drone.enabled = false;
+        emit(ctx, 'DRONE_DESTROYED', 'combat', { droneId: drone.id, turretId: turret.id });
+      }
+
+      turret.lockTicks = 0;
+      continue;
+    }
+
+    const requiresExplicitInstruction = ctx.level.uiVariant === 'turretAim';
+    if (requiresExplicitInstruction && !turret.desiredTargetId) {
       turret.currentTargetId = null;
       turret.lockTicks = 0;
       continue;

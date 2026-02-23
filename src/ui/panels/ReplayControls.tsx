@@ -1,8 +1,6 @@
 import type { ReplaySpeed } from '../../store/useGameStore';
 
 interface ReplayControlsProps {
-  tick: number;
-  maxTick: number;
   playing: boolean;
   speed: ReplaySpeed;
   onTogglePlay: () => void;
@@ -12,8 +10,6 @@ interface ReplayControlsProps {
 }
 
 export function ReplayControls({
-  tick,
-  maxTick,
   playing,
   speed,
   onTogglePlay,
@@ -24,9 +20,6 @@ export function ReplayControls({
   return (
     <div className="replay-controls">
       <div className="replay-controls-left">
-        <span>
-          Tick {tick}/{maxTick}
-        </span>
         <button className="btn" onClick={onTogglePlay}>
           {playing ? 'Pause' : 'Play'}
         </button>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, type MouseEvent, type ReactNode } from 'react';
 import type { LevelDefinition } from '../../game/models/types';
 import type { EventRecord, SimulationSnapshot } from '../../game/engine/eventTypes';
 
@@ -7,11 +7,60 @@ const TILE = 42;
 interface MapPanelProps {
   level: LevelDefinition;
   snapshot: SimulationSnapshot | null;
-  tick: number;
   selectedDeviceId: string | null;
   onSelectDevice: (id: string | null) => void;
   highlighted?: boolean;
   frameEvents?: EventRecord[];
+  overlay?: ReactNode;
+  playerOverride?: {
+    x: number;
+    y: number;
+    alive?: boolean;
+  } | null;
+}
+
+function parseCoordTargetId(targetId: string): { x: number; y: number } | null {
+  const match = targetId.match(/^coord:(-?\d+),(-?\d+)$/);
+  if (!match) {
+    return null;
+  }
+  return { x: Number(match[1]), y: Number(match[2]) };
+}
+
+function resolveTurretTarget(
+  snapshot: SimulationSnapshot,
+  targetId: string | null,
+  fallbackX: number,
+  fallbackY: number,
+): { x: number; y: number } {
+  if (!targetId) {
+    return { x: fallbackX, y: fallbackY - TILE * 0.4 };
+  }
+
+  if (targetId === 'player') {
+    return {
+      x: snapshot.player.x * TILE + TILE / 2,
+      y: snapshot.player.y * TILE + TILE / 2,
+    };
+  }
+
+  const coordTarget = parseCoordTargetId(targetId);
+  if (coordTarget) {
+    return {
+      x: coordTarget.x * TILE + TILE / 2,
+      y: coordTarget.y * TILE + TILE / 2,
+    };
+  }
+
+  const target = snapshot.devices[targetId];
+  if (!target) {
+    return { x: fallbackX, y: fallbackY - TILE * 0.4 };
+  }
+
+  return {
+    x: target.x * TILE + TILE / 2,
+    y: target.y * TILE + TILE / 2,
+  };
 }
 
 function drawDevice(
@@ -19,14 +68,16 @@ function drawDevice(
   snapshot: SimulationSnapshot,
   device: SimulationSnapshot['devices'][string],
   selected: boolean,
+  variant: NonNullable<LevelDefinition['uiVariant']>,
 ): void {
   const cx = device.x * TILE + TILE / 2;
   const cy = device.y * TILE + TILE / 2;
   const radius = TILE * 0.28;
+  const inTurretAimVariant = variant === 'turretAim';
 
   ctx.save();
   ctx.lineWidth = selected ? 3 : 1;
-  ctx.strokeStyle = selected ? '#f7d354' : '#0d1117';
+  ctx.strokeStyle = selected ? '#7dd3fc' : '#0d1117';
 
   switch (device.type) {
     case 'camera': {
@@ -41,47 +92,53 @@ function drawDevice(
       break;
     }
     case 'turret': {
-      let tx = cx;
-      let ty = cy - TILE * 0.4;
-      const targetId = device.currentTargetId;
-      if (targetId === 'player') {
-        tx = snapshot.player.x * TILE + TILE / 2;
-        ty = snapshot.player.y * TILE + TILE / 2;
-      } else if (targetId) {
-        const target = snapshot.devices[targetId];
-        if (target) {
-          tx = target.x * TILE + TILE / 2;
-          ty = target.y * TILE + TILE / 2;
-        }
-      }
-
-      const dx = tx - cx;
-      const dy = ty - cy;
+      const target = resolveTurretTarget(snapshot, device.currentTargetId, cx, cy);
+      const dx = target.x - cx;
+      const dy = target.y - cy;
       const magnitude = Math.max(1, Math.hypot(dx, dy));
       const ux = dx / magnitude;
       const uy = dy / magnitude;
 
-      ctx.fillStyle = device.enabled ? '#ef4444' : '#5f3c3c';
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (inTurretAimVariant) {
+        ctx.fillStyle = device.enabled ? '#121417' : '#2a2d31';
+        ctx.fillRect(cx - radius * 0.45, cy - radius * 0.2, radius * 0.9, radius * 1.35);
+        ctx.fillRect(cx - radius * 0.7, cy - radius * 0.95, radius * 1.4, radius * 0.55);
+        ctx.strokeRect(cx - radius * 0.7, cy - radius * 0.95, radius * 1.4, radius * 0.55);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - radius * 0.7);
+        ctx.lineTo(cx + ux * TILE * 0.42, cy - radius * 0.7 + uy * TILE * 0.42);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = device.enabled ? '#ef4444' : '#5f3c3c';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
 
-      ctx.strokeStyle = device.enabled ? '#fecaca' : '#7f4747';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + ux * TILE * 0.38, cy + uy * TILE * 0.38);
-      ctx.stroke();
+        ctx.strokeStyle = device.enabled ? '#fecaca' : '#7f4747';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + ux * TILE * 0.38, cy + uy * TILE * 0.38);
+        ctx.stroke();
+      }
       break;
     }
     case 'drone': {
-      const alive = device.alive;
-      ctx.fillStyle = alive ? '#f59e0b' : '#666666';
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (inTurretAimVariant) {
+        ctx.fillStyle = device.alive ? '#ef4444' : '#6b7280';
+        ctx.fillRect(cx - radius * 0.85, cy - radius * 0.85, radius * 1.7, radius * 1.7);
+        ctx.strokeRect(cx - radius * 0.85, cy - radius * 0.85, radius * 1.7, radius * 1.7);
+      } else {
+        const alive = device.alive;
+        ctx.fillStyle = alive ? '#f59e0b' : '#666666';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
       break;
     }
     case 'door': {
@@ -99,7 +156,7 @@ function drawDevice(
       break;
     }
     case 'terminal': {
-      ctx.fillStyle = '#6ee7ff';
+      ctx.fillStyle = inTurretAimVariant ? '#05070c' : '#6ee7ff';
       ctx.beginPath();
       ctx.rect(cx - radius, cy - radius * 0.5, radius * 2, radius);
       ctx.fill();
@@ -110,7 +167,7 @@ function drawDevice(
       break;
   }
 
-  ctx.fillStyle = '#dbeafe';
+  ctx.fillStyle = inTurretAimVariant ? '#cbd5e1' : '#dbeafe';
   ctx.font = '11px Menlo, monospace';
   ctx.textAlign = 'center';
   ctx.fillText(device.id, cx, cy + TILE * 0.44);
@@ -121,6 +178,7 @@ function drawProjectileEffects(
   ctx: CanvasRenderingContext2D,
   snapshot: SimulationSnapshot,
   frameEvents: EventRecord[],
+  variant: NonNullable<LevelDefinition['uiVariant']>,
 ): void {
   for (const event of frameEvents) {
     if (event.type !== 'TURRET_FIRED') {
@@ -143,17 +201,23 @@ function drawProjectileEffects(
       ex = snapshot.player.x * TILE + TILE / 2;
       ey = snapshot.player.y * TILE + TILE / 2;
     } else {
-      const target = snapshot.devices[targetId];
-      if (!target) {
-        continue;
+      const coord = parseCoordTargetId(targetId);
+      if (coord) {
+        ex = coord.x * TILE + TILE / 2;
+        ey = coord.y * TILE + TILE / 2;
+      } else {
+        const target = snapshot.devices[targetId];
+        if (!target) {
+          continue;
+        }
+        ex = target.x * TILE + TILE / 2;
+        ey = target.y * TILE + TILE / 2;
       }
-      ex = target.x * TILE + TILE / 2;
-      ey = target.y * TILE + TILE / 2;
     }
 
     ctx.save();
-    ctx.strokeStyle = '#fb7185';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = variant === 'turretAim' ? '#f87171' : '#fb7185';
+    ctx.lineWidth = variant === 'turretAim' ? 2 : 3;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(ex, ey);
@@ -161,7 +225,7 @@ function drawProjectileEffects(
 
     const px = sx + (ex - sx) * 0.72;
     const py = sy + (ey - sy) * 0.72;
-    ctx.fillStyle = '#fde68a';
+    ctx.fillStyle = variant === 'turretAim' ? '#fee2e2' : '#fde68a';
     ctx.beginPath();
     ctx.arc(px, py, 4, 0, Math.PI * 2);
     ctx.fill();
@@ -172,18 +236,17 @@ function drawProjectileEffects(
 export function MapPanel({
   level,
   snapshot,
-  tick,
   selectedDeviceId,
   onSelectDevice,
   highlighted = false,
   frameEvents = [],
+  overlay,
+  playerOverride = null,
 }: MapPanelProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const variant = level.uiVariant ?? 'default';
 
-  const devices = useMemo(
-    () => (snapshot ? Object.values(snapshot.devices) : []),
-    [snapshot],
-  );
+  const devices = useMemo(() => (snapshot ? Object.values(snapshot.devices) : []), [snapshot]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -200,10 +263,14 @@ export function MapPanel({
     canvas.width = width;
     canvas.height = height;
 
-    ctx.fillStyle = '#070b16';
+    if (variant === 'turretAim') {
+      ctx.fillStyle = '#22252d';
+    } else {
+      ctx.fillStyle = '#070b16';
+    }
     ctx.fillRect(0, 0, width, height);
 
-    ctx.strokeStyle = '#1f2b45';
+    ctx.strokeStyle = variant === 'turretAim' ? '#2f3644' : '#1f2b45';
     ctx.lineWidth = 1;
     for (let x = 0; x <= level.map.width; x += 1) {
       ctx.beginPath();
@@ -218,54 +285,64 @@ export function MapPanel({
       ctx.stroke();
     }
 
-    ctx.strokeStyle = '#64b5f6';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    level.playerPath.forEach((point, idx) => {
-      const px = point.x * TILE + TILE / 2;
-      const py = point.y * TILE + TILE / 2;
-      if (idx === 0) {
-        ctx.moveTo(px, py);
-      } else {
-        ctx.lineTo(px, py);
-      }
-    });
-    ctx.stroke();
+    if (variant === 'default') {
+      ctx.strokeStyle = '#64b5f6';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      level.playerPath.forEach((point, idx) => {
+        const px = point.x * TILE + TILE / 2;
+        const py = point.y * TILE + TILE / 2;
+        if (idx === 0) {
+          ctx.moveTo(px, py);
+        } else {
+          ctx.lineTo(px, py);
+        }
+      });
+      ctx.stroke();
+    }
 
     for (const wall of level.map.walls) {
-      ctx.fillStyle = '#1d2538';
+      ctx.fillStyle = variant === 'turretAim' ? '#f8fafc' : '#1d2538';
       ctx.fillRect(wall.x * TILE, wall.y * TILE, TILE, TILE);
     }
 
-    ctx.fillStyle = '#16a34a';
-    ctx.fillRect(level.entry.x * TILE + TILE * 0.2, level.entry.y * TILE + TILE * 0.2, TILE * 0.6, TILE * 0.6);
+    if (variant === 'default') {
+      ctx.fillStyle = '#16a34a';
+      ctx.fillRect(level.entry.x * TILE + TILE * 0.2, level.entry.y * TILE + TILE * 0.2, TILE * 0.6, TILE * 0.6);
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(level.exit.x * TILE + TILE * 0.2, level.exit.y * TILE + TILE * 0.2, TILE * 0.6, TILE * 0.6);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(level.exit.x * TILE + TILE * 0.2, level.exit.y * TILE + TILE * 0.2, TILE * 0.6, TILE * 0.6);
+    }
 
     if (snapshot) {
       for (const device of devices) {
-        drawDevice(ctx, snapshot, device, device.id === selectedDeviceId);
+        drawDevice(ctx, snapshot, device, device.id === selectedDeviceId, variant);
       }
 
-      const playerX = snapshot.player.x * TILE + TILE / 2;
-      const playerY = snapshot.player.y * TILE + TILE / 2;
-      ctx.fillStyle = snapshot.player.alive ? '#e2e8f0' : '#f43f5e';
-      ctx.beginPath();
-      ctx.arc(playerX, playerY, TILE * 0.22, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#0f172a';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      const drawPlayer = playerOverride ?? snapshot.player;
+      const playerX = drawPlayer.x * TILE + TILE / 2;
+      const playerY = drawPlayer.y * TILE + TILE / 2;
+      const playerAlive = drawPlayer.alive ?? snapshot.player.alive;
+      if (variant === 'turretAim') {
+        ctx.fillStyle = playerAlive ? '#4db7f2' : '#f43f5e';
+        ctx.fillRect(playerX - TILE * 0.24, playerY - TILE * 0.24, TILE * 0.48, TILE * 0.48);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(playerX - TILE * 0.24, playerY - TILE * 0.24, TILE * 0.48, TILE * 0.48);
+      } else {
+        ctx.fillStyle = playerAlive ? '#e2e8f0' : '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(playerX, playerY, TILE * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
 
-      drawProjectileEffects(ctx, snapshot, frameEvents);
+      drawProjectileEffects(ctx, snapshot, frameEvents, variant);
     }
 
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '12px Menlo, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Tick ${tick}`, 8, 16);
-  }, [level, snapshot, tick, devices, selectedDeviceId, frameEvents]);
+  }, [level, snapshot, devices, selectedDeviceId, frameEvents, variant, playerOverride]);
 
   const onClick = (event: MouseEvent<HTMLCanvasElement>) => {
     if (!snapshot) {
@@ -289,8 +366,11 @@ export function MapPanel({
 
   return (
     <div className={`panel panel-map ${highlighted ? 'tutorial-focus' : ''}`}>
-      <div className="panel__title">Map / Replay</div>
-      <canvas ref={canvasRef} className="map-canvas" onClick={onClick} />
+      <div className="panel__title">{variant === 'turretAim' ? 'Map Mode' : 'Map / Replay'}</div>
+      <div className="map-canvas-wrap">
+        <canvas ref={canvasRef} className="map-canvas" onClick={onClick} />
+        {overlay ? <div className="map-canvas-overlay">{overlay}</div> : null}
+      </div>
     </div>
   );
 }

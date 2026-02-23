@@ -43,14 +43,9 @@ function getNextWalkthroughStep(step: number, completion: WalkthroughCompletionS
 }
 
 export function createWalkthroughForLevel(levelId: string, seenLevel1Walkthrough: boolean): WalkthroughSlice {
-  if (levelId !== 'level1' || seenLevel1Walkthrough) {
-    return defaultWalkthroughSlice;
-  }
-  return {
-    walkthroughActive: true,
-    walkthroughStep: 0,
-    walkthroughCompletion: emptyWalkthroughCompletion,
-  };
+  void levelId;
+  void seenLevel1Walkthrough;
+  return defaultWalkthroughSlice;
 }
 
 export function advanceWalkthrough(slice: WalkthroughSlice): WalkthroughSlice | null {

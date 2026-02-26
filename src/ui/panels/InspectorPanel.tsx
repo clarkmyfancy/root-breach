@@ -37,11 +37,28 @@ function serializeDevice(device: Device): string[] {
       rows.push(`alive: ${device.alive}`);
       rows.push(`pathIndex: ${device.pathIndex}`);
       rows.push(`stepInterval: ${device.stepInterval}`);
+      rows.push(`investigateAlarmId: ${device.investigateAlarmId ?? '-'}`);
+      break;
+    case 'guard':
+      rows.push(`alive: ${device.alive}`);
+      rows.push(`pathIndex: ${device.pathIndex}`);
+      rows.push(`stepInterval: ${device.stepInterval}`);
+      rows.push(`facing: ${device.facing}`);
+      rows.push(`visionRange: ${device.visionRange}`);
+      rows.push(`investigateAlarmId: ${device.investigateAlarmId ?? '-'}`);
       break;
     case 'alarm':
       rows.push(`state: ${device.state}`);
       rows.push(`redAtTick: ${device.redAtTick ?? '-'}`);
       rows.push(`manualDelayBuffer: ${device.manualDelayBuffer}`);
+      rows.push(`scriptedResetAtTick: ${device.scriptedResetAtTick ?? '-'}`);
+      rows.push(`scriptTriggerDuration: ${device.scriptTriggerDuration ?? '-'}`);
+      break;
+    case 'generator':
+      rows.push(`isOnline: ${device.isOnline}`);
+      rows.push(`overloadTicks: ${device.overloadTicks}`);
+      rows.push(`overloadAtTick: ${device.overloadAtTick ?? '-'}`);
+      rows.push(`poweredDeviceIds: ${device.poweredDeviceIds.join(', ') || '-'}`);
       break;
     default:
       break;

@@ -83,6 +83,11 @@ const patterns: Array<{
     map: (m, line, raw) => ({ line, raw, kind: 'alarm.delay', value: Number(m[1]) }),
   },
   {
+    kind: 'alarm.trigger',
+    regex: /^alarm\("([A-Za-z0-9_:-]+)"\)\.trigger\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'alarm.trigger', deviceId: m[1] }),
+  },
+  {
     kind: 'door.open',
     regex: /^door\("([A-Za-z0-9_:-]+)"\)\.open\(\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'door.open', deviceId: m[1] }),
@@ -91,6 +96,11 @@ const patterns: Array<{
     kind: 'door.close',
     regex: /^door\("([A-Za-z0-9_:-]+)"\)\.close\(\)$/,
     map: (m, line, raw) => ({ line, raw, kind: 'door.close', deviceId: m[1] }),
+  },
+  {
+    kind: 'generator.overclock',
+    regex: /^generator\("([A-Za-z0-9_:-]+)"\)\.overclock\(\)$/,
+    map: (m, line, raw) => ({ line, raw, kind: 'generator.overclock', deviceId: m[1] }),
   },
   {
     kind: 'turret.retarget',

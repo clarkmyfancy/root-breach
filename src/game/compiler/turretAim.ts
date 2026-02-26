@@ -14,7 +14,7 @@ export function getTurretAimContext(level: LevelDefinition): TurretAimContext | 
     return null;
   }
 
-  const guards = level.devices.filter((device) => device.type === 'drone');
+  const guards = level.devices.filter((device) => device.type === 'drone' || device.type === 'guard');
   return {
     intruderPosX: level.entry.x - turret.x,
     intruderPosY: level.entry.y - turret.y,

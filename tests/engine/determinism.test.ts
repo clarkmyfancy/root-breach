@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compileScript } from '../../src/game/compiler/compile';
 import { level1 } from '../../src/game/levels/level1';
+import { level3 } from '../../src/game/levels/level3';
+import { level4 } from '../../src/game/levels/level4';
 import type { LevelDefinition } from '../../src/game/models/types';
 import { runSimulation } from '../../src/game/engine/simulationRunner';
 
@@ -144,4 +146,31 @@ test('setAim(intruderPosX, intruderPosY) tracks moving intruder over time', () =
 
   const uniqueTargets = new Set(targetIds);
   assert.ok(uniqueTargets.size > 1);
+});
+
+test('alarm trap level succeeds with lure + lock script and fails without it', () => {
+  const source = ['alarm("SIDE_ALARM").trigger()', 'wait(3)', 'door("SIDE_ROOM_DOOR").close()'].join('\n');
+  const compiled = compileScript(source, level3);
+  assert.equal(compiled.errors.length, 0);
+
+  const successRun = runSimulation(level3, compiled.commands);
+  const failureRun = runSimulation(level3, []);
+
+  assert.equal(successRun.outcome, 'success');
+  assert.equal(failureRun.outcome, 'failure');
+  assert.ok(
+    failureRun.events.some((event) => event.type === 'PLAYER_CAUGHT_BY_GUARD' || event.type === 'PLAYER_CAUGHT_BY_DRONE'),
+  );
+});
+
+test('generator shutdown level succeeds with overclock and fails without power cut', () => {
+  const compiled = compileScript('generator("GEN_CORE").overclock()', level4);
+  assert.equal(compiled.errors.length, 0);
+
+  const successRun = runSimulation(level4, compiled.commands);
+  const failureRun = runSimulation(level4, []);
+
+  assert.equal(successRun.outcome, 'success');
+  assert.equal(failureRun.outcome, 'failure');
+  assert.ok(successRun.events.some((event) => event.type === 'GENERATOR_BURNT_OUT'));
 });

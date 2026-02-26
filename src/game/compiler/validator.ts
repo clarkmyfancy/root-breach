@@ -27,6 +27,12 @@ export function validateParsedScript(
         }
         break;
       }
+      case 'alarm.trigger': {
+        if (!command.deviceId) {
+          errors.push({ line: command.line, message: 'alarm("ID").trigger() requires an alarm device id' });
+        }
+        break;
+      }
       case 'camera.disable': {
         if (command.value !== undefined && command.value <= 0) {
           errors.push({ line: command.line, message: 'disable(n) must be greater than 0 when provided' });
@@ -82,8 +88,16 @@ export function validateParsedScript(
       errors.push({ line: command.line, message: `Device "${command.deviceId}" is not a camera` });
     }
 
+    if (command.kind.startsWith('alarm.') && command.kind !== 'alarm.delay' && targetDevice.type !== 'alarm') {
+      errors.push({ line: command.line, message: `Device "${command.deviceId}" is not an alarm` });
+    }
+
     if (command.kind.startsWith('door.') && targetDevice.type !== 'door') {
       errors.push({ line: command.line, message: `Device "${command.deviceId}" is not a door` });
+    }
+
+    if (command.kind.startsWith('generator.') && targetDevice.type !== 'generator') {
+      errors.push({ line: command.line, message: `Device "${command.deviceId}" is not a generator` });
     }
 
     if (command.kind.startsWith('turret.') && targetDevice.type !== 'turret') {
@@ -97,7 +111,7 @@ export function validateParsedScript(
         const target = deviceMap.get(command.targetId);
         if (!target) {
           errors.push({ line: command.line, message: `retarget target "${command.targetId}" does not exist` });
-        } else if (target.type !== 'drone') {
+        } else if (target.type !== 'drone' && target.type !== 'guard') {
           errors.push({ line: command.line, message: `retarget target "${command.targetId}" is not a valid target` });
         }
       }

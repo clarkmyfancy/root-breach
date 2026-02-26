@@ -51,6 +51,26 @@ export function buildFailureSummary(events: EventRecord[]): FailureSummary {
     };
   }
 
+  const caught = findLast(events, 'PLAYER_CAUGHT_BY_DRONE');
+  if (caught) {
+    const droneId = String(caught.payload.droneId ?? 'unknown guard');
+    return {
+      primaryCause: `Guard ${droneId} intercepted the player`,
+      causeChain: [`Guard ${droneId} occupied the route`],
+      suggestedFocus: 'Redirect guards first, then cross once the corridor is clear',
+    };
+  }
+
+  const caughtByGuard = findLast(events, 'PLAYER_CAUGHT_BY_GUARD');
+  if (caughtByGuard) {
+    const guardId = String(caughtByGuard.payload.guardId ?? 'unknown guard');
+    return {
+      primaryCause: `Guard ${guardId} intercepted the player`,
+      causeChain: [`Guard ${guardId} occupied the route`],
+      suggestedFocus: 'Trigger the alarm and route guards into the trap room before crossing',
+    };
+  }
+
   const blocked = findLast(events, 'PLAYER_BLOCKED_BY_DOOR');
   if (blocked) {
     const doorId = String(blocked.payload.doorId ?? 'unknown door');

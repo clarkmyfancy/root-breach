@@ -20,12 +20,18 @@ function formatEvent(event: EventRecord): string {
       return `${event.payload.cameraId} detected player`;
     case 'ALARM_STATE_CHANGED':
       return `Alarm ${event.payload.from} -> ${event.payload.to}`;
+    case 'ALARM_TRIGGERED':
+      return `Alarm ${event.payload.alarmId} triggered`;
     case 'SCRIPT_LINE_EXECUTED':
       return `line ${event.payload.line} executed (${event.payload.kind})`;
     case 'DEVICE_DISABLED':
       return `Disabled ${event.payload.deviceId}`;
     case 'DEVICE_ENABLED':
       return `Enabled ${event.payload.deviceId}`;
+    case 'GENERATOR_OVERCLOCKED':
+      return `Generator ${event.payload.generatorId} overclocked`;
+    case 'GENERATOR_BURNT_OUT':
+      return `Generator ${event.payload.generatorId} burnt out`;
     case 'TURRET_RETARGETED':
       return `${event.payload.turretId} retargeted to ${formatTargetId(event.payload.targetId)}`;
     case 'DOOR_OPENED':
@@ -42,6 +48,14 @@ function formatEvent(event: EventRecord): string {
       return `Turret ${event.payload.turretId} fired at ${formatTargetId(event.payload.targetId)}`;
     case 'DRONE_DESTROYED':
       return `Drone ${event.payload.droneId} destroyed`;
+    case 'GUARD_NEUTRALIZED':
+      return `Guard ${event.payload.guardId} neutralized`;
+    case 'PLAYER_SPOTTED_BY_GUARD':
+      return `Guard ${event.payload.guardId} spotted player`;
+    case 'PLAYER_CAUGHT_BY_DRONE':
+      return `Player caught by drone ${event.payload.droneId}`;
+    case 'PLAYER_CAUGHT_BY_GUARD':
+      return `Player caught by guard ${event.payload.guardId}`;
     case 'PLAYER_BLOCKED_BY_DOOR':
       return `Player blocked by ${event.payload.doorId}`;
     case 'PLAYER_KILLED':

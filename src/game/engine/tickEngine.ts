@@ -17,7 +17,7 @@ import { buildFrame } from './replayRecorder';
 
 interface TargetInfo {
   id: string;
-  kind: 'player' | 'drone';
+  kind: 'player' | 'enemy';
   x: number;
   y: number;
 }
@@ -28,6 +28,7 @@ interface TickContext {
   tickLimit: number;
   commandsByTick: Map<number, CompiledCommand[]>;
   cameraDetectionMemory: Record<string, boolean>;
+  guardDetectionMemory: Record<string, boolean>;
   eventsThisTick: EventRecord[];
   events: EventRecord[];
   executedLines: number[];
@@ -80,8 +81,8 @@ function getPrimaryTurret(ctx: TickContext): Extract<Device, { type: 'turret' }>
 }
 
 function buildDynamicAimContext(state: SimulationState, turret: Extract<Device, { type: 'turret' }>): TurretAimContext {
-  const activeGuards = Object.values(state.devices).filter((device): device is Extract<Device, { type: 'drone' }> => {
-    return device.type === 'drone' && device.alive && device.enabled;
+  const activeGuards = Object.values(state.devices).filter((device): device is Extract<Device, { type: 'drone' | 'guard' }> => {
+    return (device.type === 'drone' || device.type === 'guard') && device.alive && device.enabled;
   });
 
   return {
@@ -135,6 +136,10 @@ function getDevice<T extends Device['type']>(
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function euclideanDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function facingMatches(camera: CameraDevice, player: PlayerState): boolean {
@@ -212,6 +217,33 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         emit(ctx, 'ALARM_DELAY_APPLIED', 'script', { amount: command.value }, command.line);
         break;
       }
+      case 'alarm.trigger': {
+        const alarm = getDevice(ctx.state, command.deviceId, 'alarm');
+        if (!alarm) {
+          break;
+        }
+        const before = alarm.state;
+        alarm.state = 'RED';
+        alarm.redAtTick = null;
+        alarm.manualDelayBuffer = 0;
+        const resetAtTick = ctx.state.tick + Math.max(1, alarm.scriptTriggerDuration ?? 6);
+        alarm.scriptedResetAtTick = resetAtTick;
+        if (before !== alarm.state) {
+          emit(ctx, 'ALARM_STATE_CHANGED', 'script', { from: before, to: alarm.state }, command.line);
+          applyDoorLockdown(ctx);
+        }
+        emit(
+          ctx,
+          'ALARM_TRIGGERED',
+          'script',
+          {
+            alarmId: alarm.id,
+            resetAtTick,
+          },
+          command.line,
+        );
+        break;
+      }
       case 'door.open': {
         const door = getDevice(ctx.state, command.deviceId, 'door');
         if (!door) {
@@ -228,6 +260,21 @@ function applyScheduledScriptActions(ctx: TickContext): void {
         }
         door.isOpen = false;
         emit(ctx, 'DOOR_CLOSED', 'script', { doorId: door.id }, command.line);
+        break;
+      }
+      case 'generator.overclock': {
+        const generator = getDevice(ctx.state, command.deviceId, 'generator');
+        if (!generator || !generator.isOnline) {
+          break;
+        }
+        generator.overloadAtTick = ctx.state.tick + Math.max(1, generator.overloadTicks);
+        emit(
+          ctx,
+          'GENERATOR_OVERCLOCKED',
+          'script',
+          { generatorId: generator.id, burnoutTick: generator.overloadAtTick },
+          command.line,
+        );
         break;
       }
       case 'turret.retarget': {
@@ -304,31 +351,316 @@ function updateDeviceTimers(ctx: TickContext): void {
         camera.disabledUntilTick = null;
         emit(ctx, 'DEVICE_ENABLED', 'system', { deviceId: camera.id });
       }
+      continue;
+    }
+
+    if (device.type === 'generator') {
+      const generator = device;
+      if (!generator.isOnline || generator.overloadAtTick === null || ctx.state.tick < generator.overloadAtTick) {
+        continue;
+      }
+
+      generator.isOnline = false;
+      generator.enabled = false;
+      generator.overloadAtTick = null;
+      emit(ctx, 'GENERATOR_BURNT_OUT', 'system', { generatorId: generator.id });
+
+      for (const poweredId of generator.poweredDeviceIds) {
+        const poweredDevice = ctx.state.devices[poweredId];
+        if (!poweredDevice || !poweredDevice.enabled) {
+          continue;
+        }
+        poweredDevice.enabled = false;
+        emit(ctx, 'DEVICE_DISABLED', 'system', { deviceId: poweredDevice.id, reason: 'generator_offline' });
+      }
     }
   }
 }
 
-function updateDroneMovement(ctx: TickContext): void {
-  for (const device of Object.values(ctx.state.devices)) {
-    if (device.type !== 'drone') {
-      continue;
-    }
-    const drone = device;
-    if (!drone.enabled || !drone.alive || drone.path.length < 2) {
-      continue;
-    }
+function hasWall(level: LevelDefinition, x: number, y: number): boolean {
+  return level.map.walls.some((wall) => wall.x === x && wall.y === y);
+}
 
-    drone.stepTimer += 1;
-    if (drone.stepTimer < drone.stepInterval) {
-      continue;
-    }
+function hasClosedDoor(state: SimulationState, x: number, y: number): boolean {
+  return Object.values(state.devices).some((device) => device.type === 'door' && !device.isOpen && device.x === x && device.y === y);
+}
 
-    drone.stepTimer = 0;
-    drone.pathIndex = (drone.pathIndex + 1) % drone.path.length;
-    const point = drone.path[drone.pathIndex];
-    drone.x = point.x;
-    drone.y = point.y;
+function isWalkableTile(level: LevelDefinition, state: SimulationState, x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= level.map.width || y >= level.map.height) {
+    return false;
   }
+
+  if (hasWall(level, x, y)) {
+    return false;
+  }
+
+  return !hasClosedDoor(state, x, y);
+}
+
+function isPatrolEnemy(device: Device): device is Extract<Device, { type: 'drone' | 'guard' }> {
+  return device.type === 'drone' || device.type === 'guard';
+}
+
+function choosePatrolEnemyStep(
+  ctx: TickContext,
+  from: { x: number; y: number },
+  target: { x: number; y: number },
+): { x: number; y: number } {
+  const dx = target.x - from.x;
+  const dy = target.y - from.y;
+  const horizontal = dx === 0 ? 0 : dx > 0 ? 1 : -1;
+  const vertical = dy === 0 ? 0 : dy > 0 ? 1 : -1;
+  const prioritizeHorizontal = Math.abs(dx) >= Math.abs(dy);
+
+  const candidates = prioritizeHorizontal
+    ? [
+        { dx: horizontal, dy: 0 },
+        { dx: 0, dy: vertical },
+      ]
+    : [
+        { dx: 0, dy: vertical },
+        { dx: horizontal, dy: 0 },
+      ];
+
+  for (const candidate of candidates) {
+    if (candidate.dx === 0 && candidate.dy === 0) {
+      continue;
+    }
+
+    const nextX = from.x + candidate.dx;
+    const nextY = from.y + candidate.dy;
+    if (!isWalkableTile(ctx.level, ctx.state, nextX, nextY)) {
+      continue;
+    }
+
+    return { x: nextX, y: nextY };
+  }
+
+  return from;
+}
+
+function deriveFacingFromStep(
+  previous: { x: number; y: number },
+  next: { x: number; y: number },
+  fallback: 'up' | 'down' | 'left' | 'right',
+): 'up' | 'down' | 'left' | 'right' {
+  if (next.x > previous.x) {
+    return 'right';
+  }
+  if (next.x < previous.x) {
+    return 'left';
+  }
+  if (next.y > previous.y) {
+    return 'down';
+  }
+  if (next.y < previous.y) {
+    return 'up';
+  }
+  return fallback;
+}
+
+function findTriggeredAlarmForPatrolEnemy(
+  state: SimulationState,
+  enemy: Extract<Device, { type: 'drone' | 'guard' }>,
+): Extract<Device, { type: 'alarm' }> | undefined {
+  if (!enemy.investigateAlarmId) {
+    return undefined;
+  }
+  const alarm = state.devices[enemy.investigateAlarmId];
+  if (!alarm || alarm.type !== 'alarm' || !alarm.enabled || alarm.state !== 'RED') {
+    return undefined;
+  }
+  return alarm;
+}
+
+function updatePatrolEnemyMovement(ctx: TickContext): void {
+  if (!ctx.state.player.alive) {
+    ctx.guardDetectionMemory = {};
+  }
+
+  for (const device of Object.values(ctx.state.devices)) {
+    if (!isPatrolEnemy(device)) {
+      continue;
+    }
+
+    const enemy = device;
+    if (!enemy.enabled || !enemy.alive) {
+      continue;
+    }
+
+    enemy.stepTimer += 1;
+    if (enemy.stepTimer < Math.max(1, enemy.stepInterval)) {
+      continue;
+    }
+    enemy.stepTimer = 0;
+
+    if (enemy.type === 'guard' && ctx.state.player.alive) {
+      const canSeePlayer = guardCanSeePlayer(ctx.level, ctx.state, enemy);
+      const wasSeeing = ctx.guardDetectionMemory[enemy.id] ?? false;
+      if (canSeePlayer) {
+        if (!wasSeeing) {
+          emit(ctx, 'PLAYER_SPOTTED_BY_GUARD', 'detection', { guardId: enemy.id, player: 'agent' });
+        }
+        ctx.guardDetectionMemory[enemy.id] = true;
+        const step = choosePatrolEnemyStep(ctx, enemy, ctx.state.player);
+        enemy.facing = deriveFacingFromStep(enemy, step, enemy.facing);
+        enemy.x = step.x;
+        enemy.y = step.y;
+        continue;
+      }
+      if (wasSeeing) {
+        ctx.guardDetectionMemory[enemy.id] = false;
+      }
+    }
+
+    const investigateAlarm = findTriggeredAlarmForPatrolEnemy(ctx.state, enemy);
+    if (investigateAlarm) {
+      const step = choosePatrolEnemyStep(ctx, enemy, investigateAlarm);
+      if (enemy.type === 'guard') {
+        enemy.facing = deriveFacingFromStep(enemy, step, enemy.facing);
+      }
+      enemy.x = step.x;
+      enemy.y = step.y;
+      continue;
+    }
+
+    if (enemy.path.length < 2) {
+      continue;
+    }
+
+    const nextPathIndex = (enemy.pathIndex + 1) % enemy.path.length;
+    const targetPoint = enemy.path[nextPathIndex];
+    const step = choosePatrolEnemyStep(ctx, enemy, targetPoint);
+    if (enemy.type === 'guard') {
+      enemy.facing = deriveFacingFromStep(enemy, step, enemy.facing);
+    }
+    enemy.x = step.x;
+    enemy.y = step.y;
+
+    if (enemy.x === targetPoint.x && enemy.y === targetPoint.y) {
+      enemy.pathIndex = nextPathIndex;
+    }
+  }
+}
+
+function hasLineOfSight(
+  level: LevelDefinition,
+  state: SimulationState,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): boolean {
+  let x0 = from.x;
+  let y0 = from.y;
+  const x1 = to.x;
+  const y1 = to.y;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+
+  while (x0 !== x1 || y0 !== y1) {
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+
+    if (x0 === x1 && y0 === y1) {
+      return true;
+    }
+
+    if (hasWall(level, x0, y0) || hasClosedDoor(state, x0, y0)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function guardCanSeePlayer(
+  level: LevelDefinition,
+  state: SimulationState,
+  guard: Extract<Device, { type: 'guard' }>,
+): boolean {
+  const dx = state.player.x - guard.x;
+  const dy = state.player.y - guard.y;
+
+  let forward = 0;
+  let lateral = 0;
+  switch (guard.facing) {
+    case 'up':
+      forward = -dy;
+      lateral = Math.abs(dx);
+      break;
+    case 'down':
+      forward = dy;
+      lateral = Math.abs(dx);
+      break;
+    case 'left':
+      forward = -dx;
+      lateral = Math.abs(dy);
+      break;
+    case 'right':
+      forward = dx;
+      lateral = Math.abs(dy);
+      break;
+    default:
+      return false;
+  }
+
+  if (forward <= 0 || forward > Math.max(1, guard.visionRange)) {
+    return false;
+  }
+
+  const coneWidth = Math.max(1, Math.floor(forward / 2));
+  if (lateral > coneWidth) {
+    return false;
+  }
+
+  return hasLineOfSight(level, state, guard, state.player);
+}
+
+function checkPlayerCaughtByPatrolEnemy(ctx: TickContext): void {
+  if (!ctx.state.player.alive) {
+    return;
+  }
+
+  const caughtBy = Object.values(ctx.state.devices).find((device): device is Extract<Device, { type: 'drone' | 'guard' }> => {
+    return isPatrolEnemy(device) && device.enabled && device.alive && device.x === ctx.state.player.x && device.y === ctx.state.player.y;
+  });
+
+  if (!caughtBy) {
+    return;
+  }
+
+  ctx.state.player.alive = false;
+  if (caughtBy.type === 'guard') {
+    emit(ctx, 'PLAYER_CAUGHT_BY_GUARD', 'combat', { guardId: caughtBy.id });
+  } else {
+    emit(ctx, 'PLAYER_CAUGHT_BY_DRONE', 'combat', { droneId: caughtBy.id });
+  }
+}
+
+function updateObjectiveDoors(ctx: TickContext): void {
+  const alivePatrolEnemies = Object.values(ctx.state.devices).some((device) => {
+    return isPatrolEnemy(device) && device.enabled && device.alive;
+  });
+  if (alivePatrolEnemies) {
+    return;
+  }
+
+  const nextDoor = ctx.state.devices.NEXT_DOOR;
+  if (!nextDoor || nextDoor.type !== 'door' || nextDoor.isOpen) {
+    return;
+  }
+
+  nextDoor.isOpen = true;
+  emit(ctx, 'DOOR_OPENED', 'system', { doorId: nextDoor.id, reason: 'objective_cleared' });
 }
 
 function updateCameraDetection(ctx: TickContext): boolean {
@@ -405,6 +737,15 @@ function updateAlarmBus(ctx: TickContext, detected: boolean): void {
     emit(ctx, 'ALARM_STATE_CHANGED', 'alarm', { from: before, to: alarm.state });
     applyDoorLockdown(ctx);
   }
+
+  if (alarm.state === 'RED' && alarm.scriptedResetAtTick != null && ctx.state.tick >= alarm.scriptedResetAtTick) {
+    const before = alarm.state;
+    alarm.state = 'GREEN';
+    alarm.redAtTick = null;
+    alarm.manualDelayBuffer = 0;
+    alarm.scriptedResetAtTick = null;
+    emit(ctx, 'ALARM_STATE_CHANGED', 'alarm', { from: before, to: alarm.state });
+  }
 }
 
 function resolveTarget(state: SimulationState, preferredTargetId: string | null): TargetInfo | undefined {
@@ -414,10 +755,10 @@ function resolveTarget(state: SimulationState, preferredTargetId: string | null)
 
   if (preferredTargetId) {
     const preferred = state.devices[preferredTargetId];
-    if (preferred && preferred.type === 'drone' && preferred.alive && preferred.enabled) {
+    if (preferred && (preferred.type === 'drone' || preferred.type === 'guard') && preferred.alive && preferred.enabled) {
       return {
         id: preferred.id,
-        kind: 'drone',
+        kind: 'enemy',
         x: preferred.x,
         y: preferred.y,
       };
@@ -427,9 +768,13 @@ function resolveTarget(state: SimulationState, preferredTargetId: string | null)
   return playerTarget;
 }
 
-function findAliveDroneAt(state: SimulationState, x: number, y: number): Extract<Device, { type: 'drone' }> | undefined {
-  return Object.values(state.devices).find((device): device is Extract<Device, { type: 'drone' }> => {
-    return device.type === 'drone' && device.alive && device.enabled && device.x === x && device.y === y;
+function findAlivePatrolEnemyAt(
+  state: SimulationState,
+  x: number,
+  y: number,
+): Extract<Device, { type: 'drone' | 'guard' }> | undefined {
+  return Object.values(state.devices).find((device): device is Extract<Device, { type: 'drone' | 'guard' }> => {
+    return (device.type === 'drone' || device.type === 'guard') && device.alive && device.enabled && device.x === x && device.y === y;
   });
 }
 
@@ -462,7 +807,7 @@ function updateTurrets(ctx: TickContext, detected: boolean): void {
       const targetY = turret.y + manualAim.y;
       const targetId = `coord:${targetX},${targetY}`;
 
-      if (distance(turret, { x: targetX, y: targetY }) > turret.range) {
+      if (euclideanDistance(turret, { x: targetX, y: targetY }) > turret.range) {
         turret.currentTargetId = null;
         turret.lockTicks = 0;
         continue;
@@ -487,11 +832,15 @@ function updateTurrets(ctx: TickContext, detected: boolean): void {
         emit(ctx, 'PLAYER_KILLED', 'combat', { turretId: turret.id });
       }
 
-      const drone = findAliveDroneAt(ctx.state, targetX, targetY);
-      if (drone) {
-        drone.alive = false;
-        drone.enabled = false;
-        emit(ctx, 'DRONE_DESTROYED', 'combat', { droneId: drone.id, turretId: turret.id });
+      const enemy = findAlivePatrolEnemyAt(ctx.state, targetX, targetY);
+      if (enemy) {
+        enemy.alive = false;
+        enemy.enabled = false;
+        if (enemy.type === 'guard') {
+          emit(ctx, 'GUARD_NEUTRALIZED', 'combat', { guardId: enemy.id, turretId: turret.id });
+        } else {
+          emit(ctx, 'DRONE_DESTROYED', 'combat', { droneId: enemy.id, turretId: turret.id });
+        }
       }
 
       turret.lockTicks = 0;
@@ -512,7 +861,7 @@ function updateTurrets(ctx: TickContext, detected: boolean): void {
       continue;
     }
 
-    if (distance(turret, target) > turret.range) {
+    if (euclideanDistance(turret, target) > turret.range) {
       turret.currentTargetId = null;
       turret.lockTicks = 0;
       continue;
@@ -537,12 +886,16 @@ function updateTurrets(ctx: TickContext, detected: boolean): void {
       emit(ctx, 'PLAYER_KILLED', 'combat', { turretId: turret.id });
     }
 
-    if (target.kind === 'drone') {
-      const drone = getDevice(ctx.state, target.id, 'drone');
-      if (drone?.alive) {
-        drone.alive = false;
-        drone.enabled = false;
-        emit(ctx, 'DRONE_DESTROYED', 'combat', { droneId: drone.id, turretId: turret.id });
+    if (target.kind === 'enemy') {
+      const targetDevice = ctx.state.devices[target.id];
+      if (targetDevice && (targetDevice.type === 'drone' || targetDevice.type === 'guard') && targetDevice.alive) {
+        targetDevice.alive = false;
+        targetDevice.enabled = false;
+        if (targetDevice.type === 'guard') {
+          emit(ctx, 'GUARD_NEUTRALIZED', 'combat', { guardId: targetDevice.id, turretId: turret.id });
+        } else {
+          emit(ctx, 'DRONE_DESTROYED', 'combat', { droneId: targetDevice.id, turretId: turret.id });
+        }
       }
     }
 
@@ -639,6 +992,7 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
     tickLimit,
     commandsByTick,
     cameraDetectionMemory: {},
+    guardDetectionMemory: {},
     eventsThisTick: [],
     events,
     executedLines: [],
@@ -664,11 +1018,14 @@ export function runTickEngine(level: LevelDefinition, commands: CompiledCommand[
 
     applyScheduledScriptActions(ctx);
     updateDeviceTimers(ctx);
-    updateDroneMovement(ctx);
+    updatePatrolEnemyMovement(ctx);
+    checkPlayerCaughtByPatrolEnemy(ctx);
     const detected = updateCameraDetection(ctx);
     updateAlarmBus(ctx, detected);
     updateTurrets(ctx, detected);
+    updateObjectiveDoors(ctx);
     updatePlayerMovement(ctx);
+    checkPlayerCaughtByPatrolEnemy(ctx);
 
     const done = checkWinLose(ctx);
     ctx.state.tick += 1;

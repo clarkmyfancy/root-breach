@@ -1,4 +1,4 @@
-export type DeviceType = 'camera' | 'turret' | 'drone' | 'door' | 'alarm' | 'terminal';
+export type DeviceType = 'camera' | 'turret' | 'drone' | 'guard' | 'door' | 'alarm' | 'terminal' | 'generator';
 export type AlarmState = 'GREEN' | 'YELLOW' | 'RED';
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
@@ -44,6 +44,19 @@ export interface DroneDevice extends BaseDevice {
   stepInterval: number;
   stepTimer: number;
   alive: boolean;
+  investigateAlarmId?: string;
+}
+
+export interface GuardDevice extends BaseDevice {
+  type: 'guard';
+  path: Point[];
+  pathIndex: number;
+  stepInterval: number;
+  stepTimer: number;
+  alive: boolean;
+  facing: Facing;
+  visionRange: number;
+  investigateAlarmId?: string;
 }
 
 export interface DoorDevice extends BaseDevice {
@@ -58,19 +71,31 @@ export interface AlarmDevice extends BaseDevice {
   baseEscalationTicks: number;
   redAtTick: number | null;
   manualDelayBuffer: number;
+  scriptTriggerDuration?: number;
+  scriptedResetAtTick?: number | null;
 }
 
 export interface TerminalDevice extends BaseDevice {
   type: 'terminal';
 }
 
+export interface GeneratorDevice extends BaseDevice {
+  type: 'generator';
+  isOnline: boolean;
+  overloadTicks: number;
+  overloadAtTick: number | null;
+  poweredDeviceIds: string[];
+}
+
 export type Device =
   | CameraDevice
   | TurretDevice
   | DroneDevice
+  | GuardDevice
   | DoorDevice
   | AlarmDevice
-  | TerminalDevice;
+  | TerminalDevice
+  | GeneratorDevice;
 
 export interface LevelConstraints {
   tickLimit: number;

@@ -4,7 +4,10 @@ Root Breach is a React + TypeScript coding-stealth prototype: move on a map, acc
 
 ## Current Game State
 
-- Two playable turret levels: `level1` and auto-generated harder `level2`.
+- Four playable levels:
+  - `level1` / `level2`: turret-aim map mode (manual movement).
+  - `level3`: Alarm Trap (lure guards with alarm, then lock side-room door).
+  - `level4`: Generator Shutdown (overclock generator to cut power to defenses).
 - Map mode uses manual movement (`WASD` / arrows).
 - Terminal opens as a modal when near the turret terminal (`E`).
 - Turret logic comes from terminal code. If code does not produce `setAim(...)`, the turret has no aim.
@@ -28,6 +31,13 @@ Root Breach is a React + TypeScript coding-stealth prototype: move on a map, acc
 Primary command:
 
 - `setAim(x, y)`
+
+Additional system commands:
+
+- `alarm("ALARM_ID").trigger()`
+- `door("DOOR_ID").open()`
+- `door("DOOR_ID").close()`
+- `generator("GEN_ID").overclock()`
 
 Available variables:
 

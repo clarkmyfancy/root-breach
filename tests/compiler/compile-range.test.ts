@@ -3,6 +3,8 @@ import test from 'node:test';
 import { compileScript } from '../../src/game/compiler/compile';
 import { level1 } from '../../src/game/levels/level1';
 import { level2 } from '../../src/game/levels/level2';
+import { level3 } from '../../src/game/levels/level3';
+import { level4 } from '../../src/game/levels/level4';
 
 test('compile rejects commands scheduled at or after tickLimit', () => {
   const source = ['wait(40)', 'setAim(-1, -1)'].join('\n');
@@ -211,4 +213,22 @@ test('level2 nearest-guard loop compiles with exponent operator form', () => {
   assert.equal(result.errors.length, 0);
   assert.equal(result.commands.length, 1);
   assert.equal(result.commands[0].kind, 'turret.setAim');
+});
+
+test('level3 accepts alarm trigger + door close script', () => {
+  const source = ['alarm("SIDE_ALARM").trigger()', 'wait(3)', 'door("SIDE_ROOM_DOOR").close()'].join('\n');
+  const result = compileScript(source, level3);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.commands.length, 3);
+  assert.equal(result.commands[0].kind, 'alarm.trigger');
+  assert.equal(result.commands[2].kind, 'door.close');
+});
+
+test('level4 accepts generator overclock command', () => {
+  const result = compileScript('generator("GEN_CORE").overclock()', level4);
+
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.commands.length, 1);
+  assert.equal(result.commands[0].kind, 'generator.overclock');
 });

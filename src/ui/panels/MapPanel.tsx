@@ -92,6 +92,17 @@ function drawDevice(
       break;
     }
     case 'turret': {
+      const rangeRadius = Math.max(1, device.range) * TILE;
+      ctx.save();
+      ctx.fillStyle = inTurretAimVariant ? 'rgba(74, 222, 128, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+      ctx.strokeStyle = inTurretAimVariant ? 'rgba(74, 222, 128, 0.25)' : 'rgba(248, 113, 113, 0.22)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rangeRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
       const target = resolveTurretTarget(snapshot, device.currentTargetId, cx, cy);
       const dx = target.x - cx;
       const dy = target.y - cy;
@@ -141,6 +152,70 @@ function drawDevice(
       }
       break;
     }
+    case 'guard': {
+      if (inTurretAimVariant && device.alive) {
+        const coneLength = Math.max(1, device.visionRange) * TILE;
+        let tipX = cx;
+        let tipY = cy;
+        let leftX = cx;
+        let leftY = cy;
+        let rightX = cx;
+        let rightY = cy;
+
+        if (device.facing === 'up') {
+          tipY -= coneLength;
+          leftX -= coneLength * 0.35;
+          leftY -= coneLength;
+          rightX += coneLength * 0.35;
+          rightY -= coneLength;
+        } else if (device.facing === 'down') {
+          tipY += coneLength;
+          leftX -= coneLength * 0.35;
+          leftY += coneLength;
+          rightX += coneLength * 0.35;
+          rightY += coneLength;
+        } else if (device.facing === 'left') {
+          tipX -= coneLength;
+          leftX -= coneLength;
+          leftY -= coneLength * 0.35;
+          rightX -= coneLength;
+          rightY += coneLength * 0.35;
+        } else {
+          tipX += coneLength;
+          leftX += coneLength;
+          leftY -= coneLength * 0.35;
+          rightX += coneLength;
+          rightY += coneLength * 0.35;
+        }
+
+        ctx.fillStyle = 'rgba(249, 115, 22, 0.12)';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(leftX, leftY);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(rightX, rightY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      if (inTurretAimVariant) {
+        ctx.fillStyle = device.alive ? '#f97316' : '#6b7280';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - radius);
+        ctx.lineTo(cx - radius * 0.95, cy + radius * 0.85);
+        ctx.lineTo(cx + radius * 0.95, cy + radius * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = device.alive ? '#fb923c' : '#666666';
+        ctx.beginPath();
+        ctx.rect(cx - radius * 0.8, cy - radius * 0.8, radius * 1.6, radius * 1.6);
+        ctx.fill();
+        ctx.stroke();
+      }
+      break;
+    }
     case 'door': {
       ctx.fillStyle = device.isOpen ? '#34d399' : '#9b1c31';
       ctx.fillRect(cx - radius, cy - radius * 0.8, radius * 2, radius * 1.6);
@@ -160,6 +235,20 @@ function drawDevice(
       ctx.beginPath();
       ctx.rect(cx - radius, cy - radius * 0.5, radius * 2, radius);
       ctx.fill();
+      ctx.stroke();
+      break;
+    }
+    case 'generator': {
+      ctx.fillStyle = device.isOnline ? '#f59e0b' : '#6b7280';
+      ctx.fillRect(cx - radius * 0.9, cy - radius * 0.9, radius * 1.8, radius * 1.8);
+      ctx.strokeRect(cx - radius * 0.9, cy - radius * 0.9, radius * 1.8, radius * 1.8);
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - radius * 0.2, cy - radius * 0.55);
+      ctx.lineTo(cx + radius * 0.2, cy - radius * 0.1);
+      ctx.lineTo(cx - radius * 0.05, cy - radius * 0.1);
+      ctx.lineTo(cx + radius * 0.25, cy + radius * 0.55);
       ctx.stroke();
       break;
     }

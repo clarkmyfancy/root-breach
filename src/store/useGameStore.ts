@@ -91,6 +91,12 @@ function getInitialScript(levelId: string): string {
   if (levelId === 'level1' || levelId === 'level2') {
     return 'setAim(intruderPosX, intruderPosY)';
   }
+  if (levelId === 'level3') {
+    return '';
+  }
+  if (levelId === 'level4') {
+    return 'generator("GEN_CORE").overclock()';
+  }
   return '';
 }
 
